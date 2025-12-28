@@ -172,7 +172,7 @@ export default function K9Impound() {
               <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">Secured Vault Protocol</p>
             </div>
           </div>
-          <button onClick={() => router.push('/Vault')} className="bg-gray-900 border border-white/5 hover:bg-gray-800 text-gray-400 px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Back to Vault</button>
+          <button onClick={() => router.push('/Portal')} className="bg-gray-900 border border-white/5 hover:bg-gray-800 text-gray-400 px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Back to Portal</button>
         </header>
 
         {loading ? <div className="flex justify-center h-64"><LoadingSpinner size="lg" /></div> : (

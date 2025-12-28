@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Add this line to prevent the font fetch timeout error
+  optimizeFonts: false, 
   images: {
     remotePatterns: [
       {
@@ -11,7 +13,6 @@ const nextConfig = {
   },
   experimental: {
     externalDir: true,
-    // Correct location for this key in modern Next.js
     serverComponentsExternalPackages: ['fs'],
   },
   webpack: (config, { isServer }) => {

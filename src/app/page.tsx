@@ -84,7 +84,7 @@ export default function Home() {
         ) : (
           <>
             <p className="text-gray-400 mb-10 leading-relaxed">
-              Connect your Solana wallet to manage your K9 assets and access the NobleNetwrk ecosystem.
+              One connection, infinite utility. Your home for high-value NFTs and decentralized tools.
             </p>
             <div className="flex justify-center scale-110">
               <WalletConnectDynamic />
