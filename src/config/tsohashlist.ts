@@ -1,0 +1,18 @@
+export const TSO_HASHLIST = [  "GTyQ6ESM2q8pPNmBP54n88nz2WctqJD4XAfJHCm9oftn",
+  "F3CWmZ3gjbAms7Pinmz4ZozhwrjEWz7cUFsCZmcQS4dD",
+  "EHcTpY12UgVK3Z2WLUJtX1j6aHtVSyjDTUaADmoeyT8o",
+  "9M8DKE5AmjFvCe7TB4MXBRYkPkERPAd4c7CQwviXkTVV",
+  "9GBCQW1RvzacrcbQgGSSPNxZSrfGbDUsr1wddrUNHY8a",
+  "99FVShS6S7aXJNV4qvtVn4x4XhAKQPU772686CPfNRaz",
+  "8mxvKVZwmnmWgobwSD6teLE6gQwbGCgpJDgnXHxBtV7y",
+  "81YDNu9JYqyzunw5Aj1i7GawucZ1vaRwyMXsgL5JncAp",
+  "6oXPUskjxNLbG2esK8i5UYVC8ZMVSxJswhfUoKdihGUu",
+  "4R7MC7ZD8ybnwgwR1oKMbkMwFKHfFQcfZGkvo3oyMmEg",
+  "3pBPve9WZ28hSSQYZxiJbx394TiN1srpHYKTneNjRWSV",
+  "2s8MqeN56KXas8nvqy9jGmNSoUMmDF1CihiWBy5Z1Q4t",
+  "2V37q2M1CfriqdccXhmNR8rSmB2mQeMo1pyWzDukV4YK",
+  "2BkTGzs1gqnGXTB7ry5Rhyt6MAZbj83FqcfwNUedYNj6",
+  "266XF1HtUvjwL31AKNP2FFyEc14tXgiDGwsorum9abf6"
+] as const;
+
+export type TSOHashlist = typeof TSO_HASHLIST[number];

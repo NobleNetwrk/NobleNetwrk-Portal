@@ -1,0 +1,38 @@
+// src/config/nobleGenetics.ts
+export const NOBLE_GENETICS_HASHLIST = [
+  "CpYSZEwuc4S5297fSEqNd56VKo6kqN1srPzBe7epb7Du",
+  "H4NPyKbHsXe5p25Ksyvom4djscnkA3u1brcy8mjbo3zw",
+  "ApbmYWsDRAuRc4p9js23vmk6NjKJkzhk6k1dsmUuyzgK",
+  "E2ML2a99BLW5YpyqujrCB8tsD5FuodYDJ13USCyuWiUV",
+  "FZLWyS8frTreiQ9xr7tEHzMWiMmA6qGse3gRB1nH9wcw",
+  "379D2fedd3cn2wfY9ShwFek2JRk7ZQpZQHJYt1x74MnW",
+  "5vcGXbarLm65AeAxssUutUMpaeEbUCKbYzKXVMxeb2TN",
+  "41KSBnCp5Rx1anZRNpcF2R6DU5boSz5qyoscM3B6Tm7o",
+  "Eby5SWCujnJiuubGxNKqzwHpkmrheWJkKpDtEXK7nJsh",
+  "AKmixQDpdGyuSPYXjWFpKD9SW5gUrq5FowVuA3YYnmRh",
+  "8hwq7dH6QR1gx99Qnpjkm1bZ1LUYBAYEhAnLtbHp9nCP",
+  "9Vjs942Xp8WG8yxvCYPfKyiSWWvzMJkMhuc9GY1muJBt",
+  "Eaf469DJqrV4Qfe5dmidsU7dSh9jWZ1k1piEgbdPNFPU",
+  "VMw7oa5ZrLPH514YXrEDUaSy1QL5V37U87wEBsyJ1zH",
+  "8UH1v5kD7NPezgbhJBo4ZXL6LGtHeWKRttVY4m5gLsK5",
+  "7LpzwaFY9xnGWWN9LqYBfEgmSX84fKWBk9CLU46HRxQ1",
+  "DqncxLbGDUB8HFE7Z7JbKrExsz8ddKPKB5jejbFh94T6",
+  "6LotE7zHdWEsjWBPkahJLuVUa4MnMoKndDdveMutnfqd",
+  "3nE1KaD3ZN39swFB4pLjmyaXDriBHYXDBFzRv41rpicm",
+  "GnpiYDq2fWLZQFHM9Cf1RfvfkU9ASWYsPjrbkcNshAif",
+  "7V1QVnJBA9jAvhygQ3e8qF1H6bSskVZ1aGo9Rcm7ThhQ",
+  "EeqbDSUiimhf5jLzAayKvnVtPY5QqnxkNyBqwPvLjHwm",
+  "H2QC4HcAgFHLvRtHFayPPDe1hG7pc2S49bVG2fhhBAo9",
+  "4LZdvw5zxCLjmS4W4DGSMiBcxD26XrgkkqwYKfPLL8JP",
+  "BKTHFQCHKCFE5QxnjTx7uMAB5BFHwEfRr2wEQdqy1Gif",
+  "8Ao9dkqkBUtHdmmDeJT6E6NrEUfiuk8foVvNdwqyxpYa",
+  "EXCUcSHCjMgFp2HCLEZ1uiyeeZoM1Gu4t3eMyz7C5cpz",
+  "8pkSMMNAzjqV1NwmgKgr4XCVc988YymQRPdPb7iZ8HWG",
+  "2iB2aMxH8zd4Zgev4QREnmkQs3wvWuSDxbVYQtNKzhJY",
+  "GjvtrMjGFsM9Q8p3TTSDRAaouiYrm6kqiSSyvGwdFpUU",
+  "5nkVyrjf2sTESFDxdBH4NYNj54tT9AnS253JzwkeywrV",
+  "6GM4GDvt9s4KUmXcrxQciBAkAm6MpaYnug1qfcxEWtXd",
+  "99jgfeF65u4BbsDfgE5JHgLq1tZf6qZLU4xGe4338ueL"
+] as const;
+
+export type NobleGeneticsHashlist = typeof NOBLE_GENETICS_HASHLIST[number];

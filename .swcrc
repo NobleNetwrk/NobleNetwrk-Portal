@@ -1,0 +1,23 @@
+{
+    "jsc": {
+      "parser": {
+        "syntax": "typescript",
+        "tsx": true,
+        "decorators": false,
+        "dynamicImport": true
+      },
+      "transform": {
+        "react": {
+          "runtime": "automatic"
+        }
+      },
+      "baseUrl": ".",
+      "paths": {
+        "@/*": ["./*"]
+      },
+      "target": "es2015"
+    },
+    "module": {
+      "type": "es6"
+    }
+  }
