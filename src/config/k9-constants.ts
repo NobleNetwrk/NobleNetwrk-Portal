@@ -1,0 +1,3 @@
+export const NTWRK_PER_K9 = 500000;
+export const WEEKLY_INTEREST_RATE = 10;
+export const NTWRK_MINT_ADDRESS = 'NTWRKKPPXXzLis2aCZHQ9yJ4RyELHseF3Q8CmZBjsjS';

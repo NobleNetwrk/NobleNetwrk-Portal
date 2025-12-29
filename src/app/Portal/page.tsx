@@ -150,7 +150,6 @@ export default function Vault() {
             <button onClick={() => router.push('/K9Impound')} className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg active:scale-95">
               K9 Impound
             </button>
-            {/* NEW: Panda Love Level Button in Header */}
             <button onClick={() => router.push('/PandaLoveLevel')} className="flex-1 md:flex-none bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg active:scale-95">
               Panda Love Level
             </button>
@@ -214,7 +213,7 @@ export default function Vault() {
                 <div key={key} className="bg-gray-900/40 backdrop-blur-md p-6 rounded-3xl border border-white/5 transition-all group hover:scale-[1.02] shadow-lg">
                   <div className="flex justify-between items-start mb-6">
                     <Image src={config.icon} alt={config.label} width={42} height={42} className="rounded-xl" />
-                    <div className={`px-2 py-0.5 rounded bg-${config.color}-500/10 text-${config.color}-400 text-[8px] font-black uppercase tracking-widest`}>OK</div>
+                    {/* The "OK" badge div was removed here */}
                   </div>
                   <h3 className="text-xs font-black uppercase tracking-tight mb-1">{config.label}</h3>
                   <div className="flex justify-between items-center">
