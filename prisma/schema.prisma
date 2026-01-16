@@ -1,0 +1,66 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String          @id @default(cuid())
+  createdAt       DateTime        @default(now())
+  wallets         Wallet[]
+  // Relation to Airdrop data
+  airdropProfile  AirdropProfile? 
+}
+
+model AirdropProfile {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Airdrop Tracking Fields
+  totalAllocation Float     @default(0)
+  lastCheckIn     DateTime?
+  weeklyClaimed   Float     @default(0)
+  multiplier      Float     @default(1.0)
+  
+  updatedAt       DateTime  @updatedAt
+}
+
+model Wallet {
+  address    String     @id // The Solana Public Key
+  isPrimary  Boolean    @default(false)
+  userId     String
+  user       User       @relation(fields: [userId], references: [id])
+  verifiedAt DateTime   @default(now())
+  lockedK9s  LockedK9[] 
+}
+
+model LockedK9 {
+  id                  String    @id @default(cuid())
+  userWallet          String
+  nftMint             String    @unique
+  nftName             String
+  nftImage            String
+  lockDate            DateTime  @default(now())
+  originalNTWRKAmount Float
+  interestRate        Float
+  currentUnlockCost   Float
+  unlocked            Boolean   @default(false)
+  unlockDate          DateTime?
+  unlockSignature     String?
+  lastInterestUpdate  DateTime  @default(now())
+  wallet              Wallet    @relation(fields: [userWallet], references: [address])
+}
+
+model SystemSettings {
+  key         String   @id @unique // e.g., "k9_impound_payout"
+  value       String   // e.g., "100000"
+  description String?  // e.g., "Payout amount for K9s"
+  updatedBy   String?  // The wallet address of the admin who changed it
+  updatedAt   DateTime @updatedAt
+}

@@ -1,76 +1,191 @@
 'use client'
 
-import { useWallet, useConnection } from '@solana/wallet-adapter-react'
+import { useWallet } from '@solana/wallet-adapter-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { PublicKey } from '@solana/web3.js'
-import { TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Image from 'next/image'
 import { toast } from 'react-toastify'
 import base58 from 'bs58'
 
+// Ensure these imports match your actual file structure
 import { 
   NOBLE_GENETICS_HASHLIST, NOBLE_EXTRACTS_HASHLIST, NAMASTE_HASHLIST,
   D3FENDERS_HASHLIST, STONED_APE_CREW_HASHLIST, K9_HASHLIST,
   SENSEI_HASHLIST, TSO_HASHLIST
 } from '@/utils/hashlistLoader'
 
+// Boost Multipliers
 const BOOSTS = {
   genetics: 5, extracts: 3, namaste: 2, solanaK9s: 1,
   sensei: 1.5, tso: 2, ntwrk: 1, immortalGecko: 3,
   d3fenders: 1, stonedApeCrew: 1,
 }
 
-const NTWRK_MINT_ADDRESS = 'NTWRKKPPXXzLis2aCZHQ9yJ4RyELHseF3Q8CmZBjsjS'
 const NTWRK_BOOST_THRESHOLD = 500000;
 const TOTAL_AIRDROP = 5000000;
 const WEEKLY_ALLOCATION = 10000;
-const IMMORTAL_GECKOS_API = 'https://www.illogicalendeavors.com/gecko/immortals/tools/getImmortals.php'
-const DAS_RPC_URL = process.env.NEXT_PUBLIC_DAS_RPC_URL || 'https://api.mainnet-beta.solana.com';
 
 export default function AirdropPage() {
   const { publicKey, connected, signMessage, disconnect } = useWallet()
-  const { connection } = useConnection()
   const router = useRouter()
 
+  // State
   const [airdropProgress, setAirdropProgress] = useState(0)
   const [userTotalAllocation, setUserTotalAllocation] = useState(0)
   const [lastCheckIn, setLastCheckIn] = useState<Date | null>(null)
   const [canCheckIn, setCanCheckIn] = useState(false)
   const [isVerified, setIsVerified] = useState(false)
   const [isVerifying, setIsVerifying] = useState(false)
+  const [loading, setLoading] = useState(true)
+  
+  // Track claimed amount locally for UI updates until refresh
+  const [sessionClaimed, setSessionClaimed] = useState(0)
+
+  // Holdings State
   const [holdings, setHoldings] = useState({
     genetics: 0, extracts: 0, namaste: 0, solanaK9s: 0,
     sensei: 0, tso: 0, d3fenders: 0, stonedApeCrew: 0,
     immortalGecko: 0, ntwrkBalance: 0,
   })
-  const [loading, setLoading] = useState(true)
-  const [userWeeklyClaimed, setUserWeeklyClaimed] = useState(0)
 
-  const ntwrkBoostTiers = useMemo(() => Math.floor((holdings?.ntwrkBalance || 0) / NTWRK_BOOST_THRESHOLD), [holdings])
+  // --- Calculations ---
+
+  const ntwrkBoostTiers = useMemo(() => Math.floor((holdings.ntwrkBalance || 0) / NTWRK_BOOST_THRESHOLD), [holdings.ntwrkBalance])
   
-  const totalBoost = useMemo(() => (
-    holdings.genetics * BOOSTS.genetics + holdings.extracts * BOOSTS.extracts +
-    holdings.namaste * BOOSTS.namaste + holdings.solanaK9s * BOOSTS.solanaK9s +
-    holdings.sensei * BOOSTS.sensei + holdings.tso * BOOSTS.tso +
-    holdings.immortalGecko * BOOSTS.immortalGecko + holdings.d3fenders * BOOSTS.d3fenders +
-    holdings.stonedApeCrew * BOOSTS.stonedApeCrew + ntwrkBoostTiers * BOOSTS.ntwrk
-  ), [holdings, ntwrkBoostTiers])
+  const totalBoost = useMemo(() => {
+    return (
+      (holdings.genetics * BOOSTS.genetics) + 
+      (holdings.extracts * BOOSTS.extracts) +
+      (holdings.namaste * BOOSTS.namaste) + 
+      (holdings.solanaK9s * BOOSTS.solanaK9s) +
+      (holdings.sensei * BOOSTS.sensei) + 
+      (holdings.tso * BOOSTS.tso) +
+      (holdings.immortalGecko * BOOSTS.immortalGecko) + 
+      (holdings.d3fenders * BOOSTS.d3fenders) +
+      (holdings.stonedApeCrew * BOOSTS.stonedApeCrew) + 
+      (ntwrkBoostTiers * BOOSTS.ntwrk)
+    )
+  }, [holdings, ntwrkBoostTiers])
 
   const displayWeeklyAllocation = useMemo(() => {
+    // Basic formula: (Boost / 100) * Base Pool
     const calculated = (totalBoost / 100) * WEEKLY_ALLOCATION;
-    const available = WEEKLY_ALLOCATION - userWeeklyClaimed;
-    return Math.max(0, Math.min(calculated, available));
-  }, [totalBoost, userWeeklyClaimed]);
+    // Ensure they can't claim more than what's left in the global pool (optional logic) 
+    // or just display the calculated amount.
+    return calculated; 
+  }, [totalBoost]);
+
+  // --- Data Fetching ---
+
+  const fetchAllData = useCallback(async () => {
+    if (!publicKey) return;
+    setLoading(true);
+
+    try {
+      // 1. Fetch User Profile (Allocation, Check-in time, Linked Wallets)
+      const res = await fetch(`/api/airdrop?address=${publicKey.toBase58()}`);
+      
+      let userData = { linkedWallets: [], totalAllocation: 0, lastCheckIn: null };
+      if (res.ok) {
+        userData = await res.json();
+      } else {
+        console.warn("User profile fetch failed, defaulting to current wallet.");
+      }
+
+      setUserTotalAllocation(userData.totalAllocation || 0);
+      
+      const lDate = userData.lastCheckIn ? new Date(userData.lastCheckIn) : null;
+      setLastCheckIn(lDate);
+      
+      // Calculate 7-day cooldown
+      const now = new Date();
+      const diffTime = lDate ? Math.abs(now.getTime() - lDate.getTime()) : Infinity;
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)); 
+      setCanCheckIn(!lDate || diffDays >= 7);
+
+      // 2. AGGREGATE HOLDINGS ACROSS ALL LINKED WALLETS
+      // If DB has linked wallets, use them. Otherwise, just scan the current one.
+      const walletsToScan = (userData.linkedWallets && userData.linkedWallets.length > 0) 
+                            ? userData.linkedWallets 
+                            : [publicKey.toBase58()];
+
+      // Initialize counters
+      let grandTotal = { 
+        genetics: 0, extracts: 0, namaste: 0, solanaK9s: 0, 
+        sensei: 0, tso: 0, d3fenders: 0, stonedApeCrew: 0,
+        immortalGecko: 0, ntwrkBalance: 0 
+      }
+
+      // Hash Sets for O(1) Lookup
+      const hashSets = {
+        genetics: new Set(NOBLE_GENETICS_HASHLIST),
+        extracts: new Set(NOBLE_EXTRACTS_HASHLIST),
+        namaste: new Set(NAMASTE_HASHLIST),
+        k9: new Set(K9_HASHLIST),
+        sensei: new Set(SENSEI_HASHLIST),
+        tso: new Set(TSO_HASHLIST),
+        d3fenders: new Set(D3FENDERS_HASHLIST),
+        stonedApe: new Set(STONED_APE_CREW_HASHLIST)
+      }
+
+      // Parallel Fetch for Speed
+      await Promise.all(walletsToScan.map(async (addr: string) => {
+        try {
+          // A. Fetch Standard Holdings (NFTs + Tokens)
+          const hRes = await fetch(`/api/holdings?address=${addr}`).then(r => r.ok ? r.json() : null);
+          
+          if (hRes) {
+            if (hRes.balances?.ntwrk) grandTotal.ntwrkBalance += hRes.balances.ntwrk;
+            
+            if (hRes.nfts && Array.isArray(hRes.nfts)) {
+              hRes.nfts.forEach((asset: any) => {
+                const id = asset.id;
+                const group = asset.grouping?.[0]?.group_value;
+                
+                if (hashSets.genetics.has(id) || hashSets.genetics.has(group)) grandTotal.genetics++;
+                else if (hashSets.extracts.has(id) || hashSets.extracts.has(group)) grandTotal.extracts++;
+                else if (hashSets.namaste.has(id) || hashSets.namaste.has(group)) grandTotal.namaste++;
+                else if (hashSets.k9.has(id) || hashSets.k9.has(group)) grandTotal.solanaK9s++;
+                else if (hashSets.sensei.has(id) || hashSets.sensei.has(group)) grandTotal.sensei++;
+                else if (hashSets.tso.has(id) || hashSets.tso.has(group)) grandTotal.tso++;
+                else if (hashSets.d3fenders.has(id) || hashSets.d3fenders.has(group)) grandTotal.d3fenders++;
+                else if (hashSets.stonedApe.has(id) || hashSets.stonedApe.has(group)) grandTotal.stonedApeCrew++;
+              });
+            }
+          }
+
+          // B. Fetch Immortal Geckos (Separate Endpoint)
+          const gRes = await fetch(`/api/immortal-geckos?wallet=${addr}`).then(r => r.ok ? r.json() : null);
+          if (gRes?.count) grandTotal.immortalGecko += gRes.count;
+
+        } catch (innerErr) {
+          console.error(`Failed to scan wallet ${addr}`, innerErr);
+        }
+      }));
+
+      setHoldings(grandTotal);
+
+      // 3. Fetch Global Stats
+      const gStats = await fetch('/api/airdrop?global=true').then(r => r.ok ? r.json() : { totalAllocated: 0 });
+      setAirdropProgress(gStats.totalAllocated || 0);
+
+    } catch (e) {
+      console.error("Sync Error:", e);
+      toast.error('Failed to sync user data');
+    } finally {
+      setLoading(false);
+    }
+  }, [publicKey]);
+
+  // --- Actions ---
 
   const verifyWallet = useCallback(async () => {
     if (!publicKey || !signMessage) return
     setIsVerifying(true)
     try {
       const message = `Sign this message to authenticate with NobleNetwrk Portal.`
-      const encodedMessage = new TextEncoder().encode(message)
-      const signature = await signMessage(encodedMessage)
+      const signature = await signMessage(new TextEncoder().encode(message))
       
       const response = await fetch('/api/verify-wallet', {
         method: 'POST',
@@ -94,100 +209,42 @@ export default function AirdropPage() {
     } finally {
       setIsVerifying(false)
     }
-  }, [publicKey, signMessage, disconnect])
-
-  const fetchAllData = useCallback(async () => {
-    if (!publicKey) return;
-    setLoading(true);
-
-    const hashSets = {
-      genetics: new Set(NOBLE_GENETICS_HASHLIST),
-      extracts: new Set(NOBLE_EXTRACTS_HASHLIST),
-      namaste: new Set(NAMASTE_HASHLIST),
-      k9: new Set(K9_HASHLIST),
-      sensei: new Set(SENSEI_HASHLIST),
-      tso: new Set(TSO_HASHLIST),
-      d3fenders: new Set(D3FENDERS_HASHLIST),
-      stonedApe: new Set(STONED_APE_CREW_HASHLIST) // Corrected key to match logic below
-    }
-
-    try {
-      const results = await Promise.allSettled([
-        fetch(DAS_RPC_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0', id: 'airdrop-sync', method: 'getAssetsByOwner',
-            params: { ownerAddress: publicKey.toString(), page: 1, limit: 1000 }
-          })
-        }).then(res => res.json()),
-        connection.getParsedTokenAccountsByOwner(publicKey, { mint: new PublicKey(NTWRK_MINT_ADDRESS), programId: TOKEN_PROGRAM_ID }),
-        fetch(`${IMMORTAL_GECKOS_API}?wallet=${publicKey.toBase58()}`).then(res => res.json()),
-        fetch('/api/airdrop/global').then(res => res.json()),
-        fetch(`/api/airdrop/user/${publicKey.toBase58()}`).then(res => res.json())
-      ]);
-
-      if (results[0].status === 'fulfilled' && !results[0].value.error) {
-        const counts = { genetics: 0, extracts: 0, namaste: 0, solanaK9s: 0, sensei: 0, tso: 0, d3fenders: 0, stonedApeCrew: 0 };
-        results[0].value.result.items.forEach((asset: any) => {
-          const mint = asset.id;
-          if (hashSets.genetics.has(mint)) counts.genetics++;
-          else if (hashSets.extracts.has(mint)) counts.extracts++;
-          else if (hashSets.namaste.has(mint)) counts.namaste++;
-          else if (hashSets.k9.has(mint)) counts.solanaK9s++;
-          else if (hashSets.sensei.has(mint)) counts.sensei++;
-          else if (hashSets.tso.has(mint)) counts.tso++;
-          else if (hashSets.d3fenders.has(mint)) counts.d3fenders++;
-          else if (hashSets.stonedApe.has(mint)) counts.stonedApeCrew++;
-        });
-        setHoldings(prev => ({ ...prev, ...counts }));
-      }
-
-      if (results[1].status === 'fulfilled') {
-        const bal = results[1].value.value[0]?.account.data.parsed.info.tokenAmount.uiAmount || 0;
-        setHoldings(prev => ({ ...prev, ntwrkBalance: bal }));
-      }
-
-      if (results[2].status === 'fulfilled') {
-        const count = Array.isArray(results[2].value) ? results[2].value.filter((g: any) => g.ownerWallet === publicKey.toBase58() && g.isImmortal === "1").length : 0;
-        setHoldings(prev => ({ ...prev, immortalGecko: count }));
-      }
-
-      if (results[3].status === 'fulfilled') setAirdropProgress(results[3].value.totalAllocated || 0);
-      if (results[4].status === 'fulfilled') {
-        setUserTotalAllocation(results[4].value.totalAllocation || 0);
-        const lastDate = results[4].value.lastCheckIn ? new Date(results[4].value.lastCheckIn) : null;
-        setLastCheckIn(lastDate);
-        setUserWeeklyClaimed(results[4].value.weeklyClaimed || 0);
-        
-        if (!lastDate) setCanCheckIn(true);
-        else {
-          const diffDays = Math.ceil(Math.abs(Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
-          setCanCheckIn(diffDays >= 7);
-        }
-      }
-    } catch (e) { toast.error('Sync error'); }
-    finally { setLoading(false); }
-  }, [publicKey, connection]);
+  }, [publicKey, signMessage, disconnect, fetchAllData])
 
   const handleCheckIn = async () => {
     if (!isVerified || !canCheckIn || displayWeeklyAllocation <= 0) return;
+    
     try {
-      const response = await fetch(`/api/airdrop/user/${publicKey!.toBase58()}`, {
+      setLoading(true);
+      const response = await fetch(`/api/airdrop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ allocation: displayWeeklyAllocation, lastCheckIn: new Date().toISOString() })
+        body: JSON.stringify({ 
+          address: publicKey!.toBase58(), 
+          allocation: displayWeeklyAllocation 
+        })
       });
+
       if (!response.ok) throw new Error('Check-in failed');
+      
       const data = await response.json();
-      setUserTotalAllocation(data.totalAllocation);
-      setAirdropProgress(data.globalProgress);
-      setLastCheckIn(new Date());
-      setCanCheckIn(false);
-      setUserWeeklyClaimed(prev => prev + displayWeeklyAllocation);
+      
+      setUserTotalAllocation(data.totalAllocation); // Update UI with new total
+      setAirdropProgress(data.globalProgress);      // Update global bar
+      setLastCheckIn(new Date());                   // Reset timer
+      setCanCheckIn(false);                         // Lock button
+      setSessionClaimed(prev => prev + displayWeeklyAllocation);
+      
       toast.success(`Secured ${displayWeeklyAllocation.toFixed(2)} NTWRK!`);
-    } catch (e) { toast.error('Failed to process check-in'); }
+    } catch (e) { 
+      toast.error('Failed to process check-in'); 
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
   }
+
+  // --- Effects ---
 
   useEffect(() => {
     const stored = localStorage.getItem('verifiedWallet');
@@ -196,10 +253,16 @@ export default function AirdropPage() {
       fetchAllData();
     } else if (connected) {
       setIsVerified(false);
+      // Optional: Clear data if wallet changes but not verified
+      setHoldings({
+        genetics: 0, extracts: 0, namaste: 0, solanaK9s: 0,
+        sensei: 0, tso: 0, d3fenders: 0, stonedApeCrew: 0,
+        immortalGecko: 0, ntwrkBalance: 0,
+      });
     }
   }, [connected, publicKey, fetchAllData]);
 
-  if (!connected) return <div className="p-20 text-center"><LoadingSpinner size="lg" /></div>
+  if (!connected) return <div className="min-h-screen flex items-center justify-center bg-gray-950"><LoadingSpinner size="lg" /></div>
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-4 md:p-8">
@@ -214,6 +277,7 @@ export default function AirdropPage() {
           </button>
         </header>
 
+        {/* Verification Banner */}
         {!isVerified && (
           <div className="mb-8 p-6 bg-yellow-500/10 border border-yellow-500/20 rounded-3xl flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-4 text-yellow-500">
@@ -226,19 +290,23 @@ export default function AirdropPage() {
           </div>
         )}
 
+        {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+          {/* Global Progress */}
           <div className="bg-gray-900/40 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/5 shadow-xl">
             <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Global Progress</p>
             <p className="text-3xl font-black text-blue-500">{((airdropProgress / TOTAL_AIRDROP) * 100).toFixed(2)}%</p>
             <div className="w-full bg-gray-800 h-1.5 rounded-full mt-4 overflow-hidden"><div className="bg-blue-500 h-full shadow-[0_0_10px_rgba(59,130,246,0.8)]" style={{ width: `${(airdropProgress / TOTAL_AIRDROP) * 100}%` }} /></div>
           </div>
 
+          {/* Weekly Potential */}
           <div className="bg-gray-900/40 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/5 shadow-xl text-center">
             <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Weekly Potential</p>
             <p className="text-3xl font-black text-green-500">{displayWeeklyAllocation.toFixed(2)} <span className="text-xs">NTWRK</span></p>
             <p className="text-[10px] text-gray-600 mt-2 font-bold uppercase">{totalBoost.toFixed(1)}x Total Boost</p>
           </div>
 
+          {/* Total Secured */}
           <div className="bg-gray-900/40 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/5 shadow-xl text-right">
             <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Total Secured</p>
             <p className="text-3xl font-black text-purple-500">{userTotalAllocation.toFixed(2)} <span className="text-xs">NTWRK</span></p>
@@ -246,6 +314,7 @@ export default function AirdropPage() {
           </div>
         </div>
 
+        {/* Boost Table */}
         <section className="bg-gray-900/40 backdrop-blur-md p-8 rounded-[2.5rem] border border-white/5 mb-12 overflow-hidden">
           <h2 className="text-xl font-black uppercase tracking-tighter mb-8">Boost Factors</h2>
           <div className="overflow-x-auto">
@@ -273,7 +342,7 @@ export default function AirdropPage() {
                 ].map((row, i) => (
                   <tr key={i} className="border-b border-white/5 last:border-0">
                     <td className="py-4 text-gray-300">{row.label}</td>
-                    <td className="py-4 font-black">{row.val}</td>
+                    <td className="py-4 font-black">{typeof row.val === 'string' ? row.val : row.val}</td>
                     <td className="py-4 text-xs text-gray-500">{typeof row.mult === 'number' ? `+${row.mult}x` : row.mult}</td>
                     <td className="py-4 text-right font-black text-green-500">+{row.final ?? (Number(row.val) * (row.mult as number)).toFixed(1)}x</td>
                   </tr>
@@ -287,10 +356,11 @@ export default function AirdropPage() {
           </div>
         </section>
 
+        {/* Claim Section */}
         <section className="max-w-2xl mx-auto bg-gray-900/40 backdrop-blur-md p-10 rounded-[3rem] border border-white/5 text-center shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent" />
           <h2 className="text-2xl font-black uppercase tracking-tighter mb-4">Secure Weekly Allocation</h2>
-          <p className="text-gray-500 text-sm mb-8 leading-relaxed">Check in once every 7 days to claim your share of the weekly pool. Points are recalculated upon claim.</p>
+          <p className="text-gray-500 text-sm mb-8 leading-relaxed">Check in once every 7 days to claim your share of the weekly pool.</p>
           
           <div className="bg-gray-950/50 p-6 rounded-3xl border border-white/5 mb-8 inline-block w-full max-w-sm">
             <p className="text-[10px] font-black text-gray-500 uppercase mb-2">Current Calculation</p>
@@ -304,7 +374,7 @@ export default function AirdropPage() {
           >
             {isVerified ? (
               canCheckIn ? (
-                displayWeeklyAllocation > 0 ? `Secure ${displayWeeklyAllocation.toFixed(2)} NTWRK` : 'Allocation Cap Reached'
+                displayWeeklyAllocation > 0 ? `Secure ${displayWeeklyAllocation.toFixed(2)} NTWRK` : 'No Allocation Available'
               ) : `Next Claim in ${(7 - Math.ceil(Math.abs(Date.now() - (lastCheckIn?.getTime() || 0)) / (1000 * 60 * 60 * 24)))} Days`
             ) : 'Verification Required'}
           </button>

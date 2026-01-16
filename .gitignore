@@ -45,3 +45,6 @@ next-env.d.ts
 airdrop.json
 
 data/all_locked_k9s.json
+data/airdrop.json
+
+/src/generated/prisma

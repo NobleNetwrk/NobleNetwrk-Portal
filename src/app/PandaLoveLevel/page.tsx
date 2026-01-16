@@ -53,35 +53,70 @@ export default function PandaLoveLevel() {
     setLoading(true)
 
     try {
-      const senseiSet = new Set(SENSEI_HASHLIST);
-      const response = await fetch(RPC_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 'my-id',
-          method: 'getAssetsByOwner',
-          params: { ownerAddress: publicKey.toString(), page: 1, limit: 1000 },
-        }),
-      });
-      const { result } = await response.json();
-      const myPandas = result.items.filter((asset: any) => senseiSet.has(asset.id));
+      // 1. Get Linked Wallets from Local Storage (Set by Portal on Login)
+      const storedWallets = localStorage.getItem('noble_wallets');
+      const activeAddress = publicKey.toBase58();
+      
+      // Start with the active wallet
+      const walletSet = new Set<string>([activeAddress]);
 
+      if (storedWallets) {
+        try {
+          const parsed = JSON.parse(storedWallets);
+          if (Array.isArray(parsed)) {
+            // Add all stored wallets to the Set (handles strings or objects)
+            parsed.forEach((w: any) => {
+              if (typeof w === 'string') walletSet.add(w);
+              else if (w.address) walletSet.add(w.address);
+            });
+          }
+        } catch (err) {
+          console.warn("Could not parse stored wallets", err);
+        }
+      }
+
+      const walletsToScan = Array.from(walletSet);
+      const senseiSet = new Set(SENSEI_HASHLIST);
+      const allPandas: any[] = [];
+
+      // 2. Scan ALL linked wallets in parallel
+      await Promise.all(walletsToScan.map(async (address) => {
+        try {
+          const response = await fetch(RPC_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: `scan-${address.slice(0,5)}`,
+              method: 'getAssetsByOwner',
+              params: { ownerAddress: address, page: 1, limit: 1000 },
+            }),
+          });
+          
+          const { result } = await response.json();
+          if (result?.items) {
+             const found = result.items.filter((asset: any) => senseiSet.has(asset.id));
+             allPandas.push(...found);
+          }
+        } catch (e) {
+          console.error(`Error scanning wallet ${address}`, e);
+        }
+      }));
+
+      // 3. Process each found Panda for Love Score
       const detailedResults: PandaLoveData[] = [];
       let runningTotalLove = 0;
 
-      for (const panda of myPandas) {
+      for (const panda of allPandas) {
         let referenceTime = Math.floor(Date.now() / 1000);
 
         try {
-          await delay(150); // Prevent Bridge Errors / Rate Limits
+          // Keep the delay to prevent hitting Magic Eden / Proxy rate limits
+          await delay(150); 
           const proxyRes = await fetch(`/api/me-proxy?mint=${panda.id}`);
           const activities = await proxyRes.json();
           
           if (proxyRes.ok && Array.isArray(activities) && activities.length > 0) {
-            /** * RESTORED LOGIC: Find the MOST RECENT sale or listing.
-             * ME returns NEWEST activities at index [0].
-             */
             const recentEvent = activities.find((a: any) => 
               a.type === 'buyNow' || a.type === 'acceptOffer' || a.type === 'list'
             );
@@ -89,7 +124,6 @@ export default function PandaLoveLevel() {
             if (recentEvent) {
               referenceTime = recentEvent.blockTime;
             } else {
-              // Fallback to the newest activity available
               referenceTime = activities[0].blockTime;
             }
           }
@@ -116,6 +150,7 @@ export default function PandaLoveLevel() {
 
       setPandas(detailedResults);
       setTotalNobleLove(runningTotalLove);
+
     } catch (err) {
       console.error(err);
       toast.error('Failed to calculate Noble Love');
@@ -151,6 +186,7 @@ export default function PandaLoveLevel() {
           <div className="flex flex-col items-center justify-center h-64 text-center">
             <LoadingSpinner size="lg" />
             <p className="mt-4 text-[10px] font-black text-gray-600 uppercase tracking-widest animate-pulse">Calculating Love Levels...</p>
+            <p className="text-[9px] text-gray-700 mt-2">Scanning all linked wallets...</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">

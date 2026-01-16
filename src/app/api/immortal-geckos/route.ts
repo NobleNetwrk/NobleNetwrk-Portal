@@ -1,4 +1,4 @@
-// Force dynamic rendering to prevent Next.js from trying to build this statically
+// src/app/api/immortal-geckos/route.ts
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -7,7 +7,6 @@ const IMMORTAL_GECKOS_API = 'https://www.illogicalendeavors.com/gecko/immortals/
 
 export async function GET(request: NextRequest) {
   try {
-    // Extract the wallet address from the query parameters
     const { searchParams } = new URL(request.url);
     const wallet = searchParams.get('wallet');
 
@@ -15,13 +14,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 });
     }
 
-    // Fetch the data from the external Immortal Geckos API
-    const response = await fetch(`${IMMORTAL_GECKOS_API}?wallet=${wallet}`, {
+    const response = await fetch(IMMORTAL_GECKOS_API, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      // Cache settings can be adjusted here if needed
+      headers: { 'Content-Type': 'application/json' },
       next: { revalidate: 60 } 
     });
 
@@ -31,14 +26,14 @@ export async function GET(request: NextRequest) {
 
     const data = await response.json();
 
-    // The API returns an array of geckos; we filter for Immortals based on the 'isImmortal' flag
-    const immortalCount = Array.isArray(data) 
-      ? data.filter((g: any) => g.isImmortal === "1").length 
-      : 0;
+    // FIXED: Now filters for BOTH immortality AND matching owner wallet
+    const userImmortals = Array.isArray(data) 
+      ? data.filter((g: any) => g.isImmortal === "1" && g.ownerWallet === wallet)
+      : [];
 
     return NextResponse.json({ 
-      count: immortalCount,
-      assets: data 
+      count: userImmortals.length,
+      assets: userImmortals 
     });
 
   } catch (error: any) {

@@ -9,8 +9,8 @@ import Image from 'next/image'
 import { toast } from 'react-toastify'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import { K9_HASHLIST } from '@/config/k9hashlist'
-// Import the shared constants
-import { NTWRK_PER_K9, WEEKLY_INTEREST_RATE, NTWRK_MINT_ADDRESS } from '@/config/k9-constants'
+// REMOVED NTWRK_PER_K9 from imports
+import { WEEKLY_INTEREST_RATE, NTWRK_MINT_ADDRESS } from '@/config/k9-constants'
 
 const DAS_RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com'
 
@@ -21,6 +21,7 @@ interface K9Asset {
   locked: boolean;
   lockDate?: string;
   unlockCost?: number;
+  owner: string; 
 }
 
 export default function K9Impound() {
@@ -37,13 +38,28 @@ export default function K9Impound() {
   const [processing, setProcessing] = useState(false)
   const [userNtwrkBalance, setUserNtwrkBalance] = useState(0)
   
+  // NEW: State for the dynamic payout rate (Defaults to 100k until loaded)
+  const [payoutRate, setPayoutRate] = useState(100000)
+  
   const isFetching = useRef(false)
 
-  const calculateUnlockCost = useCallback((lockDate: string) => {
+  // NEW: Helper to fetch the live rate from DB
+  const fetchSystemSettings = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/settings')
+      const data = await res.json()
+      if (data.value) setPayoutRate(Number(data.value))
+    } catch (e) {
+      console.error("Failed to fetch system settings", e)
+    }
+  }, [])
+
+  // Calculate using the dynamic 'payoutRate' instead of constant
+  const calculateUnlockCost = useCallback((lockDate: string, rate: number) => {
     const elapsed = Date.now() - new Date(lockDate).getTime()
     const weeks = Math.max(0, Math.floor(elapsed / (7 * 24 * 60 * 60 * 1000)))
-    const interest = (NTWRK_PER_K9 * (weeks * WEEKLY_INTEREST_RATE)) / 100
-    return NTWRK_PER_K9 + interest
+    const interest = (rate * (weeks * WEEKLY_INTEREST_RATE)) / 100
+    return rate + interest
   }, [])
 
   const fetchAllData = useCallback(async () => {
@@ -52,60 +68,111 @@ export default function K9Impound() {
     setLoading(true)
 
     try {
-      const lockRes = await fetch(`/api/k9/locked?owner=${publicKey.toString()}`)
-      const { lockedK9s = [] } = await lockRes.json()
+      // 1. Fetch System Settings First
+      let currentRate = 100000
+      try {
+        const settingsRes = await fetch('/api/admin/settings')
+        const settingsData = await settingsRes.json()
+        if (settingsData.value) {
+            currentRate = Number(settingsData.value)
+            setPayoutRate(currentRate)
+        }
+      } catch (e) { console.warn("Using default rate") }
 
+      // 2. Get All Linked Wallets
+      const stored = localStorage.getItem('noble_wallets')
+      const walletSet = new Set<string>([publicKey.toString()])
+      
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored)
+          if (Array.isArray(parsed)) parsed.forEach(w => walletSet.add(w))
+        } catch (e) { console.warn("Storage parse error", e) }
+      }
+      
+      const walletsToScan = Array.from(walletSet)
+      const k9MintSet = new Set(K9_HASHLIST)
+      
+      const grandTotalAssets: K9Asset[] = []
+
+      // 3. Scan each wallet in parallel
+      await Promise.all(walletsToScan.map(async (address) => {
+        try {
+          // A. Fetch Locked K9s for this wallet from DB
+          const lockRes = await fetch(`/api/k9/locked?owner=${address}`)
+          const { lockedK9s = [] } = await lockRes.json()
+          
+          const lockedFormatted = lockedK9s.map((l: any) => ({
+            id: l.mint,
+            name: l.name || `K9 #${l.mint.slice(0, 4)}`,
+            image: l.image || '/solana-k9s-icon.png',
+            locked: true,
+            lockDate: l.lockDate,
+            // Use the currentRate fetched above
+            unlockCost: calculateUnlockCost(l.lockDate, currentRate),
+            owner: address 
+          }))
+          grandTotalAssets.push(...lockedFormatted)
+
+          // B. Fetch Wallet K9s from RPC
+          const dasRes = await fetch(DAS_RPC_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0', id: `k9-${address.slice(0,4)}`, method: 'getAssetsByOwner',
+              params: { ownerAddress: address, page: 1, limit: 1000 }
+            }),
+          })
+          const dasData = await dasRes.json()
+          
+          const walletK9s = (dasData.result?.items || [])
+            .filter((item: any) => k9MintSet.has(item.id))
+            .map((item: any) => ({
+              id: item.id,
+              name: item.content?.metadata?.name || `K9 #${item.id.slice(0,4)}`,
+              image: item.content?.links?.image || '/solana-k9s-icon.png',
+              locked: false,
+              owner: address 
+            }))
+          grandTotalAssets.push(...walletK9s)
+
+        } catch (err) {
+          console.error(`Failed to scan ${address}`, err)
+        }
+      }))
+
+      setK9Nfts(grandTotalAssets)
+
+      // Fetch NTWRK balance
       try {
         const ata = await getAssociatedTokenAddress(new PublicKey(NTWRK_MINT_ADDRESS), publicKey)
         const account = await getAccount(connection, ata)
         setUserNtwrkBalance(Number(account.amount) / 1e9) 
       } catch { setUserNtwrkBalance(0) }
 
-      const dasRes = await fetch(DAS_RPC_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0', id: 'k9-fetch', method: 'getAssetsByOwner',
-          params: { ownerAddress: publicKey.toString(), page: 1, limit: 1000 }
-        }),
-      })
-      const dasData = await dasRes.json()
-      const k9MintSet = new Set(K9_HASHLIST)
-      
-      const walletK9s = (dasData.result?.items || [])
-        .filter((item: any) => k9MintSet.has(item.id))
-        .map((item: any) => ({
-          id: item.id,
-          name: item.content?.metadata?.name || `K9 #${item.id.slice(0,4)}`,
-          image: item.content?.links?.image || '/solana-k9s-icon.png',
-          locked: false
-        }))
-
-      const lockedFormatted = lockedK9s.map((l: any) => ({
-        id: l.mint,
-        name: l.name || `K9 #${l.mint.slice(0, 4)}`,
-        image: l.image || '/solana-k9s-icon.png',
-        locked: true,
-        lockDate: l.lockDate,
-        unlockCost: calculateUnlockCost(l.lockDate)
-      }))
-
-      setK9Nfts([...walletK9s, ...lockedFormatted])
     } catch (e) { toast.error("Failed to load assets") }
     finally { setLoading(false); isFetching.current = false; }
   }, [publicKey, connection, calculateUnlockCost])
 
   useEffect(() => { if (connected && publicKey) fetchAllData() }, [connected, publicKey, fetchAllData])
 
+  // --- ACTIONS ---
+
   const handleLock = async () => {
     if (!publicKey || !signTransaction) return;
+
+    const wrongWalletAssets = k9Nfts.filter(n => selectedNfts.includes(n.id) && n.owner !== publicKey.toString())
+    if (wrongWalletAssets.length > 0) {
+      toast.warn(`Please switch to wallet ${wrongWalletAssets[0].owner.slice(0,6)}... to impound ${wrongWalletAssets[0].name}`)
+      return
+    }
+
     setProcessing(true);
     try {
       const nftsToLock = k9Nfts
         .filter(n => selectedNfts.includes(n.id))
         .map(n => ({ mint: n.id, name: n.name, image: n.image }));
 
-      // Step 1: Get the transaction from the server
       const res = await fetch('/api/k9/lock', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -115,7 +182,6 @@ export default function K9Impound() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
-      // Step 2: User signs and sends the transaction
       const tx = Transaction.from(Buffer.from(data.transaction, 'base64'));
       const signedTx = await signTransaction(tx);
       const signature = await connection.sendRawTransaction(signedTx.serialize(), { 
@@ -123,22 +189,13 @@ export default function K9Impound() {
         preflightCommitment: 'confirmed' 
       });
       
-      // Wait for confirmation on the frontend first
       await connection.confirmTransaction(signature, 'confirmed');
 
-      // Step 3: Tell the server to verify the signature and update the JSON file
-      const confirmRes = await fetch('/api/k9/lock', {
+      await fetch('/api/k9/lock', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-              signature, 
-              owner: publicKey.toString(), 
-              nfts: nftsToLock 
-          })
+          body: JSON.stringify({ signature, owner: publicKey.toString(), nfts: nftsToLock })
       });
-
-      const confirmData = await confirmRes.json();
-      if (confirmData.error) throw new Error("Transaction succeeded but database update failed. Please contact support.");
 
       toast.success("K9s Impounded successfully!");
       fetchAllData();
@@ -152,6 +209,12 @@ export default function K9Impound() {
 
   const handleUnlock = async () => {
     if (!selectedForUnlock || !publicKey || !signTransaction) return;
+
+    if (selectedForUnlock.owner !== publicKey.toString()) {
+      toast.warn(`Please switch to wallet ${selectedForUnlock.owner.slice(0,6)}... to rescue this K9`);
+      return;
+    }
+
     setProcessing(true);
     try {
       const res = await fetch('/api/k9/unlock', {
@@ -188,7 +251,11 @@ export default function K9Impound() {
               <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">Secured Vault Protocol</p>
             </div>
           </div>
-          <button onClick={() => router.push('/Portal')} className="bg-gray-900 border border-white/5 hover:bg-gray-800 text-gray-400 px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Back to Portal</button>
+          <div className="flex gap-4">
+             {/* Admin Shortcut (Hidden unless you want it public) */}
+             <button onClick={() => router.push('/Admin')} className="bg-red-900/20 border border-red-500/10 hover:bg-red-900/40 text-red-500 px-4 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Admin</button>
+             <button onClick={() => router.push('/Portal')} className="bg-gray-900 border border-white/5 hover:bg-gray-800 text-gray-400 px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Back to Portal</button>
+          </div>
         </header>
 
         {/* How It Works Section */}
@@ -209,7 +276,8 @@ export default function K9Impound() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="bg-gray-900/50 p-6 rounded-3xl border border-white/5">
                         <p className="text-blue-500 font-black text-xs uppercase mb-2">1. Instant Liquidity</p>
-                        <p className="text-[10px] text-gray-500 leading-tight">Get <span className="text-white">{NTWRK_PER_K9.toLocaleString()} $NTWRK</span> instantly upon impounding your K9.</p>
+                        {/* DYNAMIC VALUE DISPLAYED HERE */}
+                        <p className="text-[10px] text-gray-500 leading-tight">Get <span className="text-white">{payoutRate.toLocaleString()} $NTWRK</span> instantly upon impounding your K9.</p>
                     </div>
                     <div className="bg-gray-900/50 p-6 rounded-3xl border border-white/5">
                         <p className="text-green-500 font-black text-xs uppercase mb-2">2. Floor Protection</p>
@@ -233,10 +301,22 @@ export default function K9Impound() {
               <h2 className="text-xl font-black mb-6 flex items-center gap-2 uppercase tracking-tighter"><span className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></span> Available K9s</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 {k9Nfts.filter(n => !n.locked).map(nft => (
-                  <div key={nft.id} onClick={() => setSelectedNfts(prev => prev.includes(nft.id) ? prev.filter(i => i !== nft.id) : [...prev, nft.id])} className={`p-3 rounded-[2rem] border-2 transition-all cursor-pointer bg-gray-900/40 backdrop-blur-md ${selectedNfts.includes(nft.id) ? 'border-blue-500 scale-95' : 'border-white/5'}`}>
+                  <div 
+                    key={nft.id} 
+                    onClick={() => setSelectedNfts(prev => prev.includes(nft.id) ? prev.filter(i => i !== nft.id) : [...prev, nft.id])} 
+                    className={`p-3 rounded-[2rem] border-2 transition-all cursor-pointer bg-gray-900/40 backdrop-blur-md relative ${selectedNfts.includes(nft.id) ? 'border-blue-500 scale-95' : 'border-white/5'}`}
+                  >
                     <div className="relative aspect-square rounded-2xl overflow-hidden mb-3"><Image src={nft.image} alt="k9" fill className="object-cover" /></div>
                     <p className="text-[10px] font-black uppercase text-gray-400 truncate text-center">{nft.name}</p>
-                    <div className="mt-2 bg-green-500/10 py-1.5 rounded-xl text-center"><p className="text-[10px] font-black text-green-500">+{NTWRK_PER_K9.toLocaleString()} NTWRK</p></div>
+                    
+                    {nft.owner !== publicKey?.toString() && (
+                      <div className="absolute top-2 right-2 bg-black/60 px-2 py-1 rounded text-[8px] font-bold text-yellow-400 border border-yellow-500/30">
+                        {nft.owner.slice(0, 4)}...
+                      </div>
+                    )}
+
+                    {/* DYNAMIC PRICE DISPLAY */}
+                    <div className="mt-2 bg-green-500/10 py-1.5 rounded-xl text-center"><p className="text-[10px] font-black text-green-500">+{payoutRate.toLocaleString()} NTWRK</p></div>
                   </div>
                 ))}
               </div>
@@ -247,9 +327,16 @@ export default function K9Impound() {
               <h2 className="text-xl font-black mb-6 flex items-center gap-2 uppercase tracking-tighter"><span className="w-3 h-3 bg-orange-500 rounded-full"></span> Locked Assets</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 {k9Nfts.filter(n => n.locked).map(nft => (
-                  <div key={nft.id} className="p-3 rounded-[2rem] bg-gray-900/20 border border-white/5 transition-all">
+                  <div key={nft.id} className="p-3 rounded-[2rem] bg-gray-900/20 border border-white/5 transition-all relative">
                     <div className="relative aspect-square rounded-2xl overflow-hidden mb-3 grayscale opacity-60"><Image src={nft.image} alt="k9" fill className="object-cover" /></div>
                     <p className="text-[10px] font-black text-gray-500 truncate text-center">{nft.name}</p>
+
+                    {nft.owner !== publicKey?.toString() && (
+                      <div className="absolute top-2 right-2 bg-black/60 px-2 py-1 rounded text-[8px] font-bold text-yellow-400 border border-yellow-500/30">
+                        {nft.owner.slice(0, 4)}...
+                      </div>
+                    )}
+
                     <div className="mt-2 bg-orange-500/5 p-2 rounded-xl text-center"><p className="text-sm font-black text-orange-500">{nft.unlockCost?.toLocaleString()} NTWRK</p></div>
                     <button onClick={() => { setSelectedForUnlock(nft); setShowUnlockModal(true); }} className="w-full mt-3 bg-orange-600 hover:bg-orange-700 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all">RESCUE</button>
                   </div>
@@ -265,7 +352,7 @@ export default function K9Impound() {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-white/5 p-10 rounded-[3rem] max-w-sm w-full shadow-2xl text-center">
             <h3 className="text-2xl font-black mb-2 uppercase tracking-tighter">Confirm Impound?</h3>
-            <p className="text-gray-500 text-sm mb-8">Receive <span className="text-green-600 font-bold">{(selectedNfts.length * NTWRK_PER_K9).toLocaleString()} $NTWRK</span> instantly.</p>
+            <p className="text-gray-500 text-sm mb-8">Receive <span className="text-green-600 font-bold">{(selectedNfts.length * payoutRate).toLocaleString()} $NTWRK</span> instantly.</p>
             <button disabled={processing} onClick={handleLock} className="w-full bg-blue-600 hover:bg-blue-700 py-5 rounded-3xl font-black tracking-widest text-xs transition-all shadow-lg">{processing ? "PROCESSING..." : "CONFIRM"}</button>
             <button onClick={() => setShowLockModal(false)} className="w-full text-gray-400 font-bold text-xs uppercase tracking-widest py-4">Cancel</button>
           </div>

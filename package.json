@@ -25,6 +25,8 @@
     "@metaplex-foundation/umi-web3js-adapters": "^1.4.1",
     "@noble/curves": "1.2.0",
     "@noble/hashes": "1.4.0",
+    "@prisma/adapter-pg": "^7.2.0",
+    "@prisma/client": "5.19.1",
     "@solana/spl-token": "^0.4.14",
     "@solana/spl-token-metadata": "^0.1.6",
     "@solana/wallet-adapter-base": "^0.9.27",
@@ -37,20 +39,24 @@
     "arweave": "^1.15.7",
     "axios": "^1.10.0",
     "borsh": "^2.0.0",
+    "bs58": "5.0.0",
     "buffer": "^6.0.3",
     "bufferutil": "4.0.9",
     "crypto-js": "^4.2.0",
+    "dotenv": "^17.2.3",
     "fastestsmallesttextencoderdecoder": "^1.0.22",
     "got": "^14.4.7",
     "keccak": "3.0.4",
     "lodash": "^4.17.21",
     "next": "^14.1.4",
+    "pg": "^8.16.3",
     "pino-pretty": "^13.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-toastify": "^4.1.0",
     "secp256k1": "5.0.1",
     "swr": "^2.3.6",
+    "tweetnacl": "^1.0.3",
     "undici": "^7.16.0",
     "utf-8-validate": "5.0.10"
   },
@@ -59,6 +65,7 @@
     "@types/keccak": "^3",
     "@types/lodash": "^4.17.21",
     "@types/node": "^20.14.2",
+    "@types/pg": "^8.16.0",
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
     "@types/react-toastify": "^4.1.0",
@@ -69,8 +76,10 @@
     "glob": "^10.3.10",
     "lru-cache": "^10.2.0",
     "postcss": "^8.4.38",
+    "prisma": "5.19.1",
     "rimraf": "^5.0.5",
     "tailwindcss": "^3.4.3",
+    "tsx": "^4.21.0",
     "typescript": "^5.4.5"
   },
   "resolutions": {
@@ -79,5 +88,5 @@
     "@noble/curves": "1.2.0",
     "avsc": "^5.7.7"
   },
-  "packageManager": "yarn@4.1.1"
+  "packageManager": "yarn@4.12.0"
 }
