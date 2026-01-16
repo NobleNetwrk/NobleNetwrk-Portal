@@ -8,7 +8,12 @@ import { clusterApiUrl } from '@solana/web3.js';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 export function SolanaProvider({ children }: { children: ReactNode }) {
-  const endpoint = useMemo(() => clusterApiUrl('mainnet-beta'), []);
+  // FIX: Check .env first. If missing, Fallback to public (slow) RPC.
+  const endpoint = useMemo(() => 
+    process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl('mainnet-beta'), 
+  []);
+
+  // Note: Modern wallet adapters auto-detect, so empty array is usually fine
   const wallets = useMemo(() => [], []);
 
   return (
