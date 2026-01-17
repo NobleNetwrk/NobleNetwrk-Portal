@@ -1,84 +1,75 @@
-// app/api/holdings/route.ts
+// src/app/api/holdings/route.ts
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { NextResponse } from "next/server";
 
-// 1. Setup Server-Side Connection (Uses the private RPC_URL from .env)
-const RPC_URL = process.env.RPC_URL; 
+export const dynamic = 'force-dynamic'; // Disable static caching for this route
+
+const RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || process.env.RPC_URL;
 const connection = new Connection(RPC_URL || "https://api.mainnet-beta.solana.com");
+const NTWRK_MINT_ADDRESS = "NTWRKKPPXXzLis2aCZHQ9yJ4RyELHseF3Q8CmZBjsjS";
 
-// 2. Define Constants
-// REPLACE THIS with the actual Mint Address for your NTWRK token
-const NTWRK_MINT_ADDRESS = "NTWRKKPPXXzLis2aCZHQ9yJ4RyELHseF3Q8CmZBjsjS"; 
-
-export async function GET(request: Request) {
-  // Get wallet address from the query string ?address=...
-  const { searchParams } = new URL(request.url);
-  const walletAddress = searchParams.get("address");
-
-  if (!walletAddress) {
-    return NextResponse.json({ error: "Wallet address required" }, { status: 400 });
-  }
-
+async function fetchWalletData(address: string) {
   try {
-    const pubKey = new PublicKey(walletAddress);
+    const pubKey = new PublicKey(address);
 
-    // 3. Run all fetches in parallel for speed
+    // Run parallel fetches
     const [solBalance, tokenAccounts, dasAssets] = await Promise.all([
-        // A. Fetch SOL
-        connection.getBalance(pubKey),
-
-        // B. Fetch NTWRK Token Account
-        connection.getParsedTokenAccountsByOwner(pubKey, {
-            mint: new PublicKey(NTWRK_MINT_ADDRESS)
+      connection.getBalance(pubKey).catch(() => 0),
+      connection.getParsedTokenAccountsByOwner(pubKey, {
+        mint: new PublicKey(NTWRK_MINT_ADDRESS)
+      }).catch(() => ({ value: [] })),
+      // Helius DAS Call (Much faster than parsing token accounts one by one)
+      fetch(RPC_URL!, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'noble-portal',
+          method: 'getAssetsByOwner',
+          params: {
+            ownerAddress: address,
+            page: 1,
+            limit: 1000,
+            displayOptions: { showGrandTotal: true }
+          },
         }),
-
-        // C. Fetch NFTs (Using Helius DAS API via raw fetch for efficiency)
-        fetch(RPC_URL!, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                jsonrpc: '2.0',
-                id: 'my-id',
-                method: 'getAssetsByOwner',
-                params: {
-                    ownerAddress: walletAddress,
-                    page: 1,
-                    limit: 1000,
-                    displayOptions: {
-                        showGrandTotal: true,
-                    }
-                },
-            }),
-        }).then(res => res.json())
+      }).then(res => res.json()).catch(() => ({ result: { items: [] } }))
     ]);
 
-    // 4. Process Data
-    
-    // Process SOL
+    // Process Basic Balances
     const sol = solBalance / LAMPORTS_PER_SOL;
-
-    // Process NTWRK
-    // Note: User might have multiple accounts for same token (rare but possible), we sum them.
-    const ntwrkBalance = tokenAccounts.value.reduce((acc, account) => {
-        return acc + (account.account.data.parsed.info.tokenAmount.uiAmount || 0);
-    }, 0);
-
-    // Process NFTs
-    // Helius DAS response structure handling
-    const nfts = dasAssets.result?.items || [];
+    const ntwrkBalance = tokenAccounts.value?.reduce((acc: number, account: any) => {
+      return acc + (account.account.data.parsed.info.tokenAmount.uiAmount || 0);
+    }, 0) || 0;
     
-    return NextResponse.json({
-        wallet: walletAddress,
-        balances: {
-            sol: sol,
-            ntwrk: ntwrkBalance,
-            nftCount: nfts.length
-        },
-        nfts: nfts // Sending full NFT list if you need to display them
-    });
+    // Return RAW NFTs so frontend can filter them using Hashlists
+    const nfts = dasAssets.result?.items || [];
 
-  } catch (error: any) {
-    console.error("Holdings fetch error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return {
+      wallet: address,
+      balances: { sol, ntwrk: ntwrkBalance, nftCount: nfts.length },
+      nfts: nfts // Frontend will sort these into "Genetics", "Extracts", etc.
+    };
+  } catch (error) {
+    console.error(`Error fetching ${address}:`, error);
+    return { wallet: address, error: "Failed to fetch" };
   }
+}
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const walletsParam = searchParams.get("wallets");
+  const addressParam = searchParams.get("address");
+
+  // Combine params into a unique list
+  let targets: string[] = [];
+  if (walletsParam) targets = walletsParam.split(',');
+  if (addressParam) targets.push(addressParam);
+  targets = [...new Set(targets)].filter(t => t.length > 10);
+
+  if (targets.length === 0) return NextResponse.json({ error: "No wallet provided" }, { status: 400 });
+
+  // BATCH FETCH: Server handles the heavy lifting
+  const results = await Promise.all(targets.map(addr => fetchWalletData(addr)));
+  return NextResponse.json({ data: results });
 }

@@ -1,46 +1,43 @@
-// src/app/api/immortal-geckos/route.ts
+import { NextResponse } from "next/server";
+
 export const dynamic = 'force-dynamic';
 
-import { NextRequest, NextResponse } from 'next/server';
+const EXTERNAL_API = "https://illogicalendeavors.com/gecko/immortals/tools/getImmortals.php";
 
-const IMMORTAL_GECKOS_API = 'https://www.illogicalendeavors.com/gecko/immortals/tools/getImmortals.php';
-
-export async function GET(request: NextRequest) {
-  try {
+export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
-    const wallet = searchParams.get('wallet');
+    const walletsParam = searchParams.get("wallets");
+    
+    // Clean inputs: Split comma-separated list into lowercase array
+    const targets = (walletsParam || "").split(',')
+        .filter(t => t.length > 10)
+        .map(t => t.toLowerCase());
 
-    if (!wallet) {
-      return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 });
+    if (targets.length === 0) return NextResponse.json({ data: [] });
+
+    try {
+        // 1. Fetch Master List (Cached for 60s)
+        const response = await fetch(EXTERNAL_API, { next: { revalidate: 60 } });
+        
+        if (!response.ok) throw new Error("External API failed");
+        
+        const allGeckos = await response.json();
+
+        // 2. Filter for ALL wallets at once
+        const foundGeckos = Array.isArray(allGeckos) ? allGeckos.filter((gecko: any) => 
+            // A. Check if it is actually Immortal (CRITICAL FIX)
+            gecko.isImmortal === "1" &&
+            // B. Check if it belongs to one of our wallets (using correct property name)
+            (targets.includes(gecko.ownerWallet?.toLowerCase()))
+        ) : [];
+
+        return NextResponse.json({ 
+            data: foundGeckos,
+            count: foundGeckos.length 
+        });
+
+    } catch (error: any) {
+        console.error("Gecko fetch error:", error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
     }
-
-    const response = await fetch(IMMORTAL_GECKOS_API, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-      next: { revalidate: 60 } 
-    });
-
-    if (!response.ok) {
-      throw new Error(`External API responded with status: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    // FIXED: Now filters for BOTH immortality AND matching owner wallet
-    const userImmortals = Array.isArray(data) 
-      ? data.filter((g: any) => g.isImmortal === "1" && g.ownerWallet === wallet)
-      : [];
-
-    return NextResponse.json({ 
-      count: userImmortals.length,
-      assets: userImmortals 
-    });
-
-  } catch (error: any) {
-    console.error('Error fetching immortal geckos:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch Immortal Gecko data', details: error.message }, 
-      { status: 500 }
-    );
-  }
 }

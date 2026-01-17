@@ -1,17 +1,17 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
 import LoadingSpinner from '@/components/LoadingSpinner'
-import { SENSEI_HASHLIST } from '@/utils/hashlistLoader'
-
-const RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || '';
-const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+import senseiHashlist from '@/data/sensei_hashlist.json' // Direct import for O(1) lookup
 
 // Collection started around June 28, 2024 (Unix: 1719532800)
 const COLLECTION_START_TIME = 1719532800; 
+
+// Convert Hashlist to Set for O(1) instant lookup
+const SENSEI_SET = new Set(senseiHashlist);
 
 interface PandaLoveData {
   id: string;
@@ -21,6 +21,7 @@ interface PandaLoveData {
   loveScore: number; 
   levelLabel: string;
   color: string;
+  isLoading?: boolean; // UI State for individual card loading
 }
 
 export default function PandaLoveLevel() {
@@ -29,12 +30,28 @@ export default function PandaLoveLevel() {
   const [loading, setLoading] = useState(true)
   const [pandas, setPandas] = useState<PandaLoveData[]>([])
   const [totalNobleLove, setTotalNobleLove] = useState(0)
+  
+  // Ref to prevent double-fetching in React 18 strict mode
+  const isFetching = useRef(false)
 
-  const getLoveMetrics = (days: number) => {
+  // --- Helpers ---
+
+  // Helper: Find the PNG in the files array, fallback to default image (GIF)
+  const getPngImage = (nft: any) => {
+    const files = nft.content?.files;
+    if (Array.isArray(files)) {
+      const pngFile = files.find((f: any) => f.mime === 'image/png' || f.type === 'image/png');
+      if (pngFile?.uri) return pngFile.uri;
+    }
+    // Fallback to default (usually GIF)
+    return nft.content?.links?.image || nft.content?.files?.[0]?.uri || '';
+  }
+
+  const getLoveMetrics = useCallback((days: number) => {
     const now = Math.floor(Date.now() / 1000);
     const maxPossibleDays = Math.max(1, Math.floor((now - COLLECTION_START_TIME) / 86400));
     
-    // Score out of 111 based on hold duration since last activity
+    // Score out of 111 based on hold duration
     const score = Math.min(111, Math.floor((days / maxPossibleDays) * 111));
     
     let label = 'Stranger';
@@ -46,118 +63,129 @@ export default function PandaLoveLevel() {
     else if (score >= 10) { label = 'Acquaintance'; color = 'text-emerald-400'; }
 
     return { score, label, color };
-  }
+  }, [])
 
   const fetchPandaLove = useCallback(async () => {
-    if (!publicKey || !RPC_URL) return
+    if (!publicKey || isFetching.current) return
+    isFetching.current = true
     setLoading(true)
 
     try {
-      // 1. Get Linked Wallets from Local Storage (Set by Portal on Login)
+      // 1. GET LINKED WALLETS (From Local Storage)
       const storedWallets = localStorage.getItem('noble_wallets');
       const activeAddress = publicKey.toBase58();
-      
-      // Start with the active wallet
       const walletSet = new Set<string>([activeAddress]);
 
       if (storedWallets) {
         try {
           const parsed = JSON.parse(storedWallets);
           if (Array.isArray(parsed)) {
-            // Add all stored wallets to the Set (handles strings or objects)
             parsed.forEach((w: any) => {
               if (typeof w === 'string') walletSet.add(w);
               else if (w.address) walletSet.add(w.address);
             });
           }
-        } catch (err) {
-          console.warn("Could not parse stored wallets", err);
-        }
+        } catch (err) { console.warn("Wallet parse error", err) }
       }
 
       const walletsToScan = Array.from(walletSet);
-      const senseiSet = new Set(SENSEI_HASHLIST);
-      const allPandas: any[] = [];
+      const walletString = walletsToScan.join(',');
 
-      // 2. Scan ALL linked wallets in parallel
-      await Promise.all(walletsToScan.map(async (address) => {
-        try {
-          const response = await fetch(RPC_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              jsonrpc: '2.0',
-              id: `scan-${address.slice(0,5)}`,
-              method: 'getAssetsByOwner',
-              params: { ownerAddress: address, page: 1, limit: 1000 },
-            }),
-          });
-          
-          const { result } = await response.json();
-          if (result?.items) {
-             const found = result.items.filter((asset: any) => senseiSet.has(asset.id));
-             allPandas.push(...found);
-          }
-        } catch (e) {
-          console.error(`Error scanning wallet ${address}`, e);
-        }
-      }));
+      console.log("🐼 Batch Scanning Wallets:", walletsToScan.length);
 
-      // 3. Process each found Panda for Love Score
-      const detailedResults: PandaLoveData[] = [];
-      let runningTotalLove = 0;
-
-      for (const panda of allPandas) {
-        let referenceTime = Math.floor(Date.now() / 1000);
-
-        try {
-          // Keep the delay to prevent hitting Magic Eden / Proxy rate limits
-          await delay(150); 
-          const proxyRes = await fetch(`/api/me-proxy?mint=${panda.id}`);
-          const activities = await proxyRes.json();
-          
-          if (proxyRes.ok && Array.isArray(activities) && activities.length > 0) {
-            const recentEvent = activities.find((a: any) => 
-              a.type === 'buyNow' || a.type === 'acceptOffer' || a.type === 'list'
-            );
-
-            if (recentEvent) {
-              referenceTime = recentEvent.blockTime;
-            } else {
-              referenceTime = activities[0].blockTime;
-            }
-          }
-        } catch (err) {
-          console.error("ME Proxy error", err);
-        }
-        
-        const now = Math.floor(Date.now() / 1000);
-        const daysHeld = Math.max(0, Math.floor((now - referenceTime) / 86400));
-        const { score, label, color } = getLoveMetrics(daysHeld);
-
-        runningTotalLove += score;
-
-        detailedResults.push({
-          id: panda.id,
-          name: panda.content?.metadata?.name || 'Sensei Panda',
-          image: panda.content?.links?.image || panda.content?.files?.[0]?.uri || '',
-          daysHeld,
-          loveScore: score,
-          levelLabel: label,
-          color
+      // 2. BATCH FETCH ASSETS (1 API Call instead of N)
+      // We use the same optimized route as the Portal
+      const response = await fetch(`/api/holdings?wallets=${walletString}`);
+      const json = await response.json();
+      
+      const foundPandas: any[] = [];
+      
+      if (json.data) {
+        json.data.forEach((walletData: any) => {
+           const nfts = walletData.nfts || [];
+           // Filter for Sensei Pandas using Hashlist
+           const matches = nfts.filter((nft: any) => {
+             const id = nft.id;
+             const group = nft.grouping?.[0]?.group_value;
+             return SENSEI_SET.has(id) || SENSEI_SET.has(group);
+           });
+           foundPandas.push(...matches);
         });
       }
 
-      setPandas(detailedResults);
-      setTotalNobleLove(runningTotalLove);
+      // 3. INITIAL RENDER (Fastest Possible Paint)
+      // Show cards immediately with images, even if score is loading
+      const initialPandas: PandaLoveData[] = foundPandas.map(p => ({
+        id: p.id,
+        name: p.content?.metadata?.name || 'Sensei Panda',
+        image: getPngImage(p), // <--- Uses PNG optimization
+        daysHeld: 0,
+        loveScore: 0,
+        levelLabel: 'Calculating...',
+        color: 'text-gray-500',
+        isLoading: true
+      }));
+
+      setPandas(initialPandas);
+      setLoading(false); // Stop main spinner, show individual loaders
+
+      // 4. ASYNC ENRICHMENT (The "Love Score" calculation)
+      let runningTotal = 0;
+      const enrichedPandas = await Promise.all(initialPandas.map(async (panda) => {
+        let referenceTime = Math.floor(Date.now() / 1000);
+        const storageKey = `panda_history_${panda.id}`;
+
+        // A. CHECK CACHE FIRST (Instant)
+        const cachedTime = localStorage.getItem(storageKey);
+        if (cachedTime) {
+          referenceTime = parseInt(cachedTime);
+        } else {
+          // B. FETCH ONLY IF NOT CACHED (Slow, but rare)
+          try {
+            const proxyRes = await fetch(`/api/me-proxy?mint=${panda.id}`);
+            if (proxyRes.ok) {
+              const activities = await proxyRes.json();
+              if (Array.isArray(activities) && activities.length > 0) {
+                // Find last sale or transfer
+                const recentEvent = activities.find((a: any) => 
+                  a.type === 'buyNow' || a.type === 'acceptOffer' || a.type === 'list'
+                );
+                referenceTime = recentEvent ? recentEvent.blockTime : activities[0].blockTime;
+                
+                // Save to cache forever (history doesn't change for this owner unless sold)
+                localStorage.setItem(storageKey, referenceTime.toString());
+              }
+            }
+          } catch (e) { console.warn("ME API Error", e) }
+        }
+
+        const now = Math.floor(Date.now() / 1000);
+        const daysHeld = Math.max(0, Math.floor((now - referenceTime) / 86400));
+        const metrics = getLoveMetrics(daysHeld);
+
+        runningTotal += metrics.score;
+
+        return {
+          ...panda,
+          daysHeld,
+          loveScore: metrics.score,
+          levelLabel: metrics.label,
+          color: metrics.color,
+          isLoading: false
+        };
+      }));
+
+      setPandas(enrichedPandas);
+      setTotalNobleLove(runningTotal);
 
     } catch (err) {
       console.error(err);
-      toast.error('Failed to calculate Noble Love');
+      toast.error('Failed to sync Panda Data');
+      setLoading(false);
     } finally {
-      setLoading(false)
+      isFetching.current = false;
     }
-  }, [publicKey])
+  }, [publicKey, getLoveMetrics])
 
   useEffect(() => {
     if (connected) fetchPandaLove();
@@ -186,17 +214,25 @@ export default function PandaLoveLevel() {
           <div className="flex flex-col items-center justify-center h-64 text-center">
             <LoadingSpinner size="lg" />
             <p className="mt-4 text-[10px] font-black text-gray-600 uppercase tracking-widest animate-pulse">Calculating Love Levels...</p>
-            <p className="text-[9px] text-gray-700 mt-2">Scanning all linked wallets...</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {pandas.map((panda) => (
               <div key={panda.id} className="group bg-gray-900/40 rounded-[3rem] border border-white/5 overflow-hidden transition-all hover:border-pink-500/40 shadow-2xl">
                 <div className="relative aspect-square">
-                  <img src={panda.image} alt={panda.name} className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105" />
+                  {/* Optimized Image Loading */}
+                  <img 
+                    src={panda.image} 
+                    alt={panda.name} 
+                    loading="lazy"
+                    className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105" 
+                  />
                   <div className="absolute inset-0 bg-gradient-to-t from-gray-950 via-transparent to-transparent opacity-80" />
+                  
                   <div className="absolute top-8 right-8 bg-black/80 backdrop-blur-xl px-5 py-2.5 rounded-2xl border border-white/10 shadow-xl">
-                    <p className={`text-[10px] font-black uppercase tracking-widest ${panda.color}`}>{panda.levelLabel}</p>
+                    <p className={`text-[10px] font-black uppercase tracking-widest ${panda.color}`}>
+                        {panda.isLoading ? <span className="animate-pulse">...</span> : panda.levelLabel}
+                    </p>
                   </div>
                 </div>
 
@@ -207,13 +243,15 @@ export default function PandaLoveLevel() {
                       <div className="space-y-1">
                         <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.15em] block">Love Score</span>
                         <span className="text-4xl font-black text-white tracking-tighter">
-                          {panda.loveScore}
+                          {panda.isLoading ? <span className="text-gray-600 text-2xl">Syncing...</span> : panda.loveScore}
                           <span className="text-base text-pink-500/40 ml-2 font-black italic">/ 111</span>
                         </span>
                       </div>
                       <div className="text-right">
                         <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.15em] block">Days Held</span>
-                        <span className="text-xl font-black text-gray-300 tracking-tighter">{panda.daysHeld}</span>
+                        <span className="text-xl font-black text-gray-300 tracking-tighter">
+                            {panda.isLoading ? '-' : panda.daysHeld}
+                        </span>
                       </div>
                     </div>
                     
