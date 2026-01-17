@@ -7,7 +7,7 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 import Image from 'next/image'
 import { toast } from 'react-toastify'
 import base58 from 'bs58'
-import { useAssetHoldings } from '@/hooks/useAssetHoldings' // <--- NEW HOOK
+import { useAssetHoldings } from '@/hooks/useAssetHoldings'
 
 // Boost Multipliers
 const BOOSTS = {
@@ -25,22 +25,48 @@ export default function AirdropPage() {
   const router = useRouter()
 
   // --- State ---
-  const [linkedWallets, setLinkedWallets] = useState<string[]>([]) // <--- Wallets to feed the hook
+  const [linkedWallets, setLinkedWallets] = useState<string[]>([]) 
   const [airdropProgress, setAirdropProgress] = useState(0)
   const [userTotalAllocation, setUserTotalAllocation] = useState(0)
   const [lastCheckIn, setLastCheckIn] = useState<Date | null>(null)
   const [canCheckIn, setCanCheckIn] = useState(false)
   const [isVerified, setIsVerified] = useState(false)
   const [isVerifying, setIsVerifying] = useState(false)
-  const [profileLoading, setProfileLoading] = useState(true)
   
-  // Track claimed amount locally for UI updates until refresh
+  // FIX 1: Start false so we don't block the UI if not verifying
+  const [profileLoading, setProfileLoading] = useState(false) 
   const [sessionClaimed, setSessionClaimed] = useState(0)
 
-  // --- 1. USE THE HOOK (Replaces manual fetching) ---
+  // --- 1. SAFELY LOAD WALLETS (The Fix) ---
+  useEffect(() => {
+    try {
+      // Safely parse localStorage to handle both old Strings and new Objects
+      const stored = JSON.parse(localStorage.getItem('noble_wallets') || '[]')
+      
+      if (Array.isArray(stored)) {
+        if (stored.length > 0 && typeof stored[0] === 'object') {
+          // New Format: Extract just the addresses
+          setLinkedWallets(stored.map((w: any) => w.address))
+        } else {
+          // Old Format: It's already strings
+          setLinkedWallets(stored)
+        }
+      }
+    } catch (e) {
+      console.error("Wallet load error", e)
+    }
+
+    // Also fetch Global Stats immediately so the bar works
+    fetch('/api/airdrop?global=true')
+      .then(res => res.json())
+      .then(data => setAirdropProgress(data.totalAllocated || 0))
+      .catch(err => console.error("Global stats failed", err))
+  }, [])
+
+  // --- 2. USE THE HOOK ---
   const { holdings: walletData, loading: assetsLoading } = useAssetHoldings(linkedWallets)
 
-  // --- 2. AGGREGATE TOTALS (Sum up all linked wallets) ---
+  // --- 3. AGGREGATE TOTALS ---
   const holdings = useMemo(() => {
     const initial = {
       genetics: 0, extracts: 0, namaste: 0, solanaK9s: 0,
@@ -65,7 +91,6 @@ export default function AirdropPage() {
   }, [walletData])
 
   // --- Calculations ---
-
   const ntwrkBoostTiers = useMemo(() => Math.floor((holdings.ntwrkBalance || 0) / NTWRK_BOOST_THRESHOLD), [holdings.ntwrkBalance])
   
   const totalBoost = useMemo(() => {
@@ -88,13 +113,11 @@ export default function AirdropPage() {
   }, [totalBoost]);
 
   // --- Data Fetching (Profile Only) ---
-
   const fetchUserProfile = useCallback(async () => {
     if (!publicKey) return;
     setProfileLoading(true);
 
     try {
-      // 1. Fetch User Profile (Allocation, Check-in time, Linked Wallets)
       const res = await fetch(`/api/airdrop?address=${publicKey.toBase58()}`);
       
       let userData = { linkedWallets: [], totalAllocation: 0, lastCheckIn: null };
@@ -107,33 +130,25 @@ export default function AirdropPage() {
       const lDate = userData.lastCheckIn ? new Date(userData.lastCheckIn) : null;
       setLastCheckIn(lDate);
       
-      // Calculate 7-day cooldown
       const now = new Date();
       const diffTime = lDate ? Math.abs(now.getTime() - lDate.getTime()) : Infinity;
       const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)); 
       setCanCheckIn(!lDate || diffDays >= 7);
 
-      // 2. SET WALLETS (This triggers the Hook automatically)
-      const walletsToScan = (userData.linkedWallets && userData.linkedWallets.length > 0) 
-                            ? userData.linkedWallets 
-                            : [publicKey.toBase58()];
-      
-      setLinkedWallets(walletsToScan);
-
-      // 3. Fetch Global Stats
-      const gStats = await fetch('/api/airdrop?global=true').then(r => r.ok ? r.json() : { totalAllocated: 0 });
-      setAirdropProgress(gStats.totalAllocated || 0);
+      // Merge API wallets with LocalStorage wallets to be safe
+      if (userData.linkedWallets && userData.linkedWallets.length > 0) {
+        setLinkedWallets(prev => Array.from(new Set([...prev, ...userData.linkedWallets])));
+      }
 
     } catch (e) {
       console.error("Sync Error:", e);
-      toast.error('Failed to sync user profile');
+      // Don't toast error here to avoid spamming users on load
     } finally {
       setProfileLoading(false);
     }
   }, [publicKey]);
 
   // --- Actions ---
-
   const verifyWallet = useCallback(async () => {
     if (!publicKey || !signMessage) return
     setIsVerifying(true)
@@ -169,7 +184,7 @@ export default function AirdropPage() {
     if (!isVerified || !canCheckIn || displayWeeklyAllocation <= 0) return;
     
     try {
-      setProfileLoading(true); // Re-use profile loading state for button feedback
+      setProfileLoading(true); 
       const response = await fetch(`/api/airdrop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -199,7 +214,6 @@ export default function AirdropPage() {
   }
 
   // --- Effects ---
-
   useEffect(() => {
     const stored = localStorage.getItem('verifiedWallet');
     if (connected && stored === publicKey?.toBase58()) {
@@ -207,17 +221,11 @@ export default function AirdropPage() {
       fetchUserProfile();
     } else if (connected) {
       setIsVerified(false);
-      // Reset logic
-      setLinkedWallets([]); 
+      // DO NOT reset linkedWallets here, keep what we loaded from LS so stats still show
     }
   }, [connected, publicKey, fetchUserProfile]);
 
   if (!connected) return <div className="min-h-screen flex items-center justify-center bg-gray-950"><LoadingSpinner size="lg" /></div>
-
-  // Show loading only if we are waiting for the PROFILE. 
-  // We can show the UI with "0" holdings while assets load in the background, 
-  // or show a spinner if you prefer strict blocking.
-  if (profileLoading && !userTotalAllocation) return <div className="min-h-screen flex items-center justify-center bg-gray-950"><LoadingSpinner size="lg" /></div>
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-4 md:p-8">
@@ -267,7 +275,14 @@ export default function AirdropPage() {
           {/* Total Secured */}
           <div className="bg-gray-900/40 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/5 shadow-xl text-right">
             <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Total Secured</p>
-            <p className="text-3xl font-black text-purple-500">{userTotalAllocation.toFixed(2)} <span className="text-xs">NTWRK</span></p>
+            <div className="flex justify-end items-center gap-2">
+              {profileLoading && isVerified ? (
+                <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <p className="text-3xl font-black text-purple-500">{userTotalAllocation.toFixed(2)}</p>
+              )}
+              <span className="text-xs text-purple-400 font-bold self-end mb-1">NTWRK</span>
+            </div>
             <p className="text-[10px] text-gray-600 mt-2 font-bold uppercase tracking-tight">Across All Seasons</p>
           </div>
         </div>
