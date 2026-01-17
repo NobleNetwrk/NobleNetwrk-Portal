@@ -40,24 +40,34 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <SolanaProvider>
           <ToastProvider> 
             {/* Header / Navigation */}
-            <nav className="w-full p-4 flex justify-between items-center bg-gray-900/50 backdrop-blur-md sticky top-0 z-50 border-b border-gray-800">
-              <div className="flex items-center gap-3">
-                 <div className="relative w-10 h-10 flex-shrink-0">
-                    <Image
-                      src="/ntwrk-logo.png"
-                      alt="NobleNetwrk Logo"
-                      fill
-                      sizes="40px"
-                      className="object-contain"
-                      priority
-                    />
-                 </div>
-                 <span className="font-black tracking-tighter text-xl whitespace-nowrap">
-                   NobleNetwrk Portal
-                 </span>
-              </div>
-              <WalletConnectDynamic />
-            </nav>
+<nav className="w-full p-4 flex justify-between items-center bg-gray-900/50 backdrop-blur-md sticky top-0 z-50 border-b border-gray-800">
+  <div className="flex items-center gap-3">
+      {/* Logo Container */}
+      <div className="relative w-10 h-10 flex-shrink-0">
+        <Image
+          src="/ntwrk-logo.png"
+          alt="NobleNetwrk Logo"
+          fill
+          sizes="40px"
+          className="object-contain"
+          priority
+        />
+      </div>
+      
+      {/* FIX: Hide text on mobile, show on Tablet/Desktop (md:block) */}
+      <span className="hidden md:block font-black tracking-tighter text-xl whitespace-nowrap">
+        NobleNetwrk Portal
+      </span>
+      
+      {/* Optional: Show a shorter name on mobile if you want */}
+      <span className="md:hidden font-black tracking-tighter text-lg text-gray-400">
+        Portal
+      </span>
+  </div>
+  
+  {/* Wallet Button */}
+  <WalletConnectDynamic />
+</nav>
             
             {/* Main Content Area */}
             <main className="flex-grow container mx-auto px-4 py-8">

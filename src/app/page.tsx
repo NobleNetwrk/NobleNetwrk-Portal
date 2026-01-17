@@ -90,7 +90,16 @@ export default function Home() {
   return (
     <main className="min-h-screen flex items-center justify-center p-4">
       <div className="bg-gray-900/40 p-10 rounded-[2.5rem] border border-white/5 shadow-2xl text-center backdrop-blur-xl max-w-md w-full">
-        <Image src="/ntwrk-logo.png" alt="Logo" width={140} height={140} className="mx-auto rounded-full mb-8 shadow-lg shadow-blue-500/20" />
+        {/* Responsive Hero Image Fix */}
+<div className="relative w-32 h-32 md:w-48 md:h-48 mx-auto mb-8">
+  <Image 
+    src="/ntwrk-logo.png" 
+    alt="Logo" 
+    fill
+    className="object-contain rounded-full shadow-lg shadow-blue-500/20"
+    priority
+  />
+</div>
         <h1 className="text-4xl font-black text-white mb-6 tracking-tighter uppercase">NobleNetwrk</h1>
         
         {isSigning ? (
