@@ -64,3 +64,11 @@ model SystemSettings {
   updatedBy   String?  // The wallet address of the admin who changed it
   updatedAt   DateTime @updatedAt
 }
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  date      DateTime @default(now())
+  isActive  Boolean  @default(true)
+}

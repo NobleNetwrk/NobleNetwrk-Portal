@@ -1,18 +1,29 @@
 // src/app/layout.tsx
 import './globals.css';
 import { ReactNode } from 'react';
+import type { Metadata } from 'next'; // <--- IMPORT THIS
 import { Inter } from 'next/font/google';
 import { SolanaProvider } from '@/components/SolanaProvider';
 import ToastProvider from '@/providers/ToastProvider';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 
-// Added display: 'swap' to help with loading issues
 const inter = Inter({ 
   subsets: ['latin'], 
   variable: '--font-inter',
   display: 'swap' 
 });
+
+// --- FIX: DEFINE SITE METADATA HERE ---
+export const metadata: Metadata = {
+  title: 'NobleNetwrk Portal',
+  description: 'Manage your Noble assets, Airdrops, and K9 Impounds.',
+  icons: {
+    icon: '/favicon.ico', // <--- Uses your specific file
+    shortcut: '/favicon.ico',
+    apple: '/ntwrk-logo.png', // Optional: You can use ntwrk-logo.png here if you want high-res for iPhones
+  },
+}
 
 const WalletConnectDynamic = dynamic(
   () => import('@/components/WalletConnect'),
@@ -31,7 +42,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             {/* Header / Navigation */}
             <nav className="w-full p-4 flex justify-between items-center bg-gray-900/50 backdrop-blur-md sticky top-0 z-50 border-b border-gray-800">
               <div className="flex items-center gap-3">
-                 {/* Logo Container: Ensure it has a fixed height/width to prevent "funny" layout shifts */}
                  <div className="relative w-10 h-10 flex-shrink-0">
                     <Image
                       src="/ntwrk-logo.png"

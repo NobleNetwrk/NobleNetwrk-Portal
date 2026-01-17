@@ -7,15 +7,33 @@ import Image from 'next/image'
 import { toast } from 'react-toastify'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import axios from 'axios'
-import { base58 } from '@/lib/base58'
+import { base58 } from '@/lib/base58' // Ensure this utility exists or use bs58 package
+import { encode } from 'bs58'
 import { useAssetHoldings } from '@/hooks/useAssetHoldings'
+
+interface Announcement {
+  id: string
+  title: string
+  content: string
+  date: string
+  isActive: boolean
+}
+
+// Define structure for wallet list items
+interface WalletItem {
+  address: string
+  isPrimary: boolean
+}
 
 export default function Portal() {
   const { publicKey, signMessage, disconnect } = useWallet()
   const router = useRouter()
 
   // --- STATE ---
-  const [linkedWallets, setLinkedWallets] = useState<string[]>([])
+  const [linkedWallets, setLinkedWallets] = useState<string[]>([]) 
+  // NEW: Store full wallet objects to track primary status
+  const [walletDetails, setWalletDetails] = useState<WalletItem[]>([]) 
+  
   const [userId, setUserId] = useState<string | null>(null)
   const [isMounted, setIsMounted] = useState(false)
   
@@ -23,13 +41,17 @@ export default function Portal() {
   const [isLinking, setIsLinking] = useState(false)
   const [isUnlinking, setIsUnlinking] = useState(false)
   const [showWalletList, setShowWalletList] = useState(false)
+  const [isSettingPrimary, setIsSettingPrimary] = useState(false)
+  
+  // Announcements State
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
+  const [showAllAnnouncements, setShowAllAnnouncements] = useState(false)
 
   // --- 1. USE THE HOOK ---
   const { holdings: walletData, loading: holdingsLoading, refetch } = useAssetHoldings(linkedWallets)
 
   // --- 2. CALCULATE TOTALS ---
   const totals = useMemo(() => {
-    // Initial counters
     const initial = {
       sol: 0, ntwrk: 0, genetics: 0, extracts: 0, namaste: 0, solanaK9s: 0,
       sensei: 0, tso: 0, d3fenders: 0, stonedApeCrew: 0, immortalGeckos: 0
@@ -37,7 +59,6 @@ export default function Portal() {
 
     if (!walletData || walletData.length === 0) return initial
 
-    // Aggregate all wallets
     return walletData.reduce((acc, curr) => ({
       sol: acc.sol + (curr.solBalance || 0),
       ntwrk: acc.ntwrk + (curr.ntwrkBalance || 0),
@@ -49,7 +70,6 @@ export default function Portal() {
       tso: acc.tso + curr.tso,
       d3fenders: acc.d3fenders + curr.d3fenders,
       stonedApeCrew: acc.stonedApeCrew + curr.stonedApeCrew,
-      // FIX 1: Use 'curr.immortalGecko' (Singular, matches Hook)
       immortalGeckos: acc.immortalGeckos + curr.immortalGecko, 
     }), initial)
   }, [walletData])
@@ -77,17 +97,39 @@ export default function Portal() {
     const storedUserId = localStorage.getItem('noble_userId')
     setUserId(storedUserId)
 
+    // Load wallets. Now we try to handle both simple string arrays (legacy) 
+    // and object arrays (if you update your login API to return them).
+    // For now, we'll fetch the full details if we only have strings.
     try {
-      const stored = JSON.parse(localStorage.getItem('noble_wallets') || '[]') as string[]
-      const validWallets = Array.isArray(stored) ? stored : []
-      if (validWallets.length === 0 && publicKey) {
-        setLinkedWallets([publicKey.toBase58()])
-      } else {
-        setLinkedWallets(validWallets)
+      const stored = JSON.parse(localStorage.getItem('noble_wallets') || '[]')
+      // If stored is string array, convert to objects temporarily
+      if (Array.isArray(stored) && typeof stored[0] === 'string') {
+        setLinkedWallets(stored)
+        setWalletDetails(stored.map((addr, idx) => ({ address: addr, isPrimary: idx === 0 }))) 
+        // Note: You should ideally fetch the real 'isPrimary' status from an API on load
+        // But for this snippet, we'll let the user set it fresh if needed.
+      } else if (Array.isArray(stored)) {
+        // Assume it's the new object format
+        setLinkedWallets(stored.map((w: any) => w.address))
+        setWalletDetails(stored)
       }
     } catch { 
-      if (publicKey) setLinkedWallets([publicKey.toBase58()])
+      if (publicKey) {
+        setLinkedWallets([publicKey.toBase58()])
+        setWalletDetails([{ address: publicKey.toBase58(), isPrimary: true }])
+      }
     }
+
+    // Fetch Announcements
+    fetch('/api/admin/announcements')
+      .then(res => res.json())
+      .then(data => {
+        if (data.data) {
+           setAnnouncements(data.data.filter((a: Announcement) => a.isActive))
+        }
+      })
+      .catch(err => console.error("Failed to load updates"))
+
   }, [publicKey])
 
   useEffect(() => {
@@ -126,13 +168,60 @@ export default function Portal() {
       
       const data = await res.json()
       if (res.ok) {
-        localStorage.setItem('noble_wallets', JSON.stringify(data.wallets))
-        setLinkedWallets(data.wallets)
+        // Update local storage with new format if API returns it, otherwise fallback
+        const newDetails = data.walletsDetailed || data.wallets.map((w:string) => ({ address: w, isPrimary: false }))
+        localStorage.setItem('noble_wallets', JSON.stringify(newDetails))
+        
+        setWalletDetails(newDetails)
+        setLinkedWallets(newDetails.map((w: any) => w.address))
         toast.success('Wallet linked successfully!')
       } else {
         toast.error(data.error || 'Link failed')
       }
     } catch (err) { console.error(err) } finally { setIsLinking(false) }
+  }
+
+  // NEW: Set Primary Wallet Handler
+  const handleSetPrimary = async (targetWallet: string) => {
+    if (!publicKey || !signMessage || !userId) return
+    setIsSettingPrimary(true)
+    try {
+      const message = `Authorize Primary Airdrop Wallet Change\nNew Target: ${targetWallet}\nTS: ${Date.now()}`
+      const signatureBytes = await signMessage(new TextEncoder().encode(message))
+      // Encode signature to base64 for transport
+      const signature = Buffer.from(signatureBytes).toString('base64')
+
+      const res = await fetch('/api/auth/set-primary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          address: targetWallet,
+          message,
+          signature
+        })
+      })
+
+      const data = await res.json()
+      if (res.ok) {
+        // Update local state
+        const updatedList = walletDetails.map(w => ({
+          ...w,
+          isPrimary: w.address === targetWallet
+        }))
+        setWalletDetails(updatedList)
+        // Persist to storage
+        localStorage.setItem('noble_wallets', JSON.stringify(updatedList))
+        toast.success(`Primary Airdrop wallet set to ${targetWallet.slice(0,4)}...`)
+      } else {
+        toast.error(data.error || "Update failed")
+      }
+    } catch (e) {
+      console.error(e)
+      toast.error("Failed to sign request")
+    } finally {
+      setIsSettingPrimary(false)
+    }
   }
 
   const handleUnlinkWallet = async (walletToRemove: string) => {
@@ -146,9 +235,11 @@ export default function Portal() {
       });
       const data = await res.json();
       if (res.ok) {
-        const newList = data.wallets || linkedWallets.filter(w => w !== walletToRemove)
+        const newList = walletDetails.filter(w => w.address !== walletToRemove)
         localStorage.setItem('noble_wallets', JSON.stringify(newList))
-        setLinkedWallets(newList)
+        setWalletDetails(newList)
+        setLinkedWallets(newList.map(w => w.address))
+        
         toast.success('Wallet unlinked.')
         if (walletToRemove === publicKey?.toBase58()) {
           disconnect();
@@ -157,6 +248,13 @@ export default function Portal() {
       } else { toast.error(data.error || 'Unlink failed') }
     } catch (err) { console.error(err); toast.error('Failed to unlink') } finally { setIsUnlinking(false) }
   };
+
+  const isRecent = (dateStr: string) => {
+    const date = new Date(dateStr)
+    const now = new Date()
+    const diff = now.getTime() - date.getTime()
+    return diff < 1000 * 60 * 60 * 24 * 3 
+  }
 
   if (!isMounted) return <div className="min-h-screen bg-gray-950 flex items-center justify-center"><LoadingSpinner size="lg"/></div>;
 
@@ -202,7 +300,6 @@ export default function Portal() {
               <div className="px-4 py-3 bg-green-900/30 border border-green-500/30 rounded-2xl"><span className="text-green-400 text-[10px] font-black uppercase tracking-widest">✓ Wallet Linked</span></div>
             )}
             
-            {/* FIX 2: Call refetch() with NO arguments */}
             <button onClick={() => refetch()} disabled={holdingsLoading} className="p-3 bg-gray-900 rounded-2xl border border-white/5 hover:bg-gray-800 transition-colors" title="Refresh Holdings">
               <svg className={`w-5 h-5 text-gray-400 ${holdingsLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.836 3a8.001 8.001 0 00-15.836-3L4 12m14.004 6.183L18 9.227m-1.722-1.722A8.001 8.001 0 004 12m14.004 6.183L18 15.227" /></svg>
             </button>
@@ -210,21 +307,82 @@ export default function Portal() {
           </div>
         </header>
 
+        {/* --- ANNOUNCEMENTS SECTION --- */}
+        {announcements.length > 0 && (
+          <section className="mb-10 bg-gradient-to-r from-blue-900/20 to-purple-900/20 backdrop-blur-md rounded-[2rem] border border-white/5 overflow-hidden animate-in fade-in slide-in-from-top-4 shadow-2xl">
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-black/20">
+              <div className="flex items-center gap-3">
+                <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
+                <h2 className="text-sm font-black uppercase tracking-widest text-white">Noble Updates</h2>
+              </div>
+              {announcements.length > 1 && (
+                <button 
+                  onClick={() => setShowAllAnnouncements(!showAllAnnouncements)} 
+                  className="text-[10px] font-bold text-gray-400 hover:text-white uppercase transition-colors"
+                >
+                  {showAllAnnouncements ? 'Show Less' : `View All (${announcements.length})`}
+                </button>
+              )}
+            </div>
+            
+            <div className="p-6 flex flex-col gap-6">
+              {(showAllAnnouncements ? announcements : announcements.slice(0, 1)).map((ann) => (
+                <div key={ann.id} className="relative pl-6 border-l-2 border-blue-500/30">
+                  {isRecent(ann.date) && (
+                    <span className="absolute -top-1 right-0 text-[9px] font-black bg-blue-600 text-white px-2 py-0.5 rounded shadow-lg animate-pulse">NEW</span>
+                  )}
+                  <h3 className="text-lg font-bold text-white mb-2">{ann.title}</h3>
+                  <p className="text-gray-400 text-sm leading-relaxed">{ann.content}</p>
+                  <p className="text-[10px] text-gray-600 font-bold uppercase mt-3">{new Date(ann.date).toLocaleDateString()}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* EXPANDED WALLET LIST WITH PRIMARY SELECTION */}
         {showWalletList && (
           <div className="mb-8 bg-gray-900/60 border border-white/10 p-6 rounded-3xl animate-in fade-in slide-in-from-top-4">
             <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Linked Wallets & Management</h3>
             <div className="flex flex-col gap-2">
-              {linkedWallets.map((wallet, idx) => (
-                <div key={idx} className="flex items-center justify-between bg-black/40 p-3 rounded-xl border border-white/5 hover:border-white/20 transition-colors">
+              {walletDetails.map((wallet, idx) => (
+                <div key={idx} className={`flex items-center justify-between p-3 rounded-xl border transition-colors ${wallet.isPrimary ? 'bg-blue-900/20 border-blue-500/50' : 'bg-black/40 border-white/5 hover:border-white/20'}`}>
                   <div className="flex items-center gap-3">
-                    <span className="font-mono text-sm text-gray-300">{wallet}</span>
-                    {publicKey?.toBase58() === wallet && <span className="text-[9px] text-blue-400 bg-blue-900/20 px-2 py-1 rounded border border-blue-500/30">ACTIVE</span>}
+                    <span className="font-mono text-sm text-gray-300">{wallet.address}</span>
+                    
+                    {/* PRIMARY BADGE */}
+                    {wallet.isPrimary && (
+                      <span className="text-[9px] text-blue-100 bg-blue-600 px-2 py-1 rounded font-black tracking-wider shadow-lg shadow-blue-500/40">
+                        PRIMARY / AIRDROP WALLET
+                      </span>
+                    )}
+                    
+                    {/* ACTIVE BADGE */}
+                    {publicKey?.toBase58() === wallet.address && (
+                      <span className="text-[9px] text-green-400 bg-green-900/20 px-2 py-1 rounded border border-green-500/30">
+                        CONNECTED
+                      </span>
+                    )}
                   </div>
-                  <button onClick={() => handleUnlinkWallet(wallet)} disabled={isUnlinking} className="text-red-500 hover:text-red-400 p-2 hover:bg-red-500/10 rounded-lg transition-all"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                  
+                  <div className="flex items-center gap-3">
+                    {/* SET PRIMARY BUTTON */}
+                    {!wallet.isPrimary && (
+                      <button 
+                        onClick={() => handleSetPrimary(wallet.address)}
+                        disabled={isSettingPrimary}
+                        className="text-[9px] font-bold text-blue-400 hover:text-white uppercase hover:underline"
+                      >
+                        Make Primary
+                      </button>
+                    )}
+                    
+                    <button onClick={() => handleUnlinkWallet(wallet.address)} disabled={isUnlinking} className="text-red-500 hover:text-red-400 p-2 hover:bg-red-500/10 rounded-lg transition-all"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                  </div>
                 </div>
               ))}
             </div>
-            <p className="text-[10px] text-gray-600 mt-4 italic">Unlinking a wallet will remove its assets from your aggregate totals immediately.</p>
+            <p className="text-[10px] text-gray-600 mt-4 italic">Airdrops will be sent to your PRIMARY wallet. Unlinking a wallet removes its assets from your totals.</p>
           </div>
         )}
 
