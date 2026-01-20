@@ -13,8 +13,10 @@ model User {
   id              String          @id @default(cuid())
   createdAt       DateTime        @default(now())
   wallets         Wallet[]
-  // Relation to Airdrop data
+  isApproved      Boolean         @default(false)
   airdropProfile  AirdropProfile? 
+  hodlScore       Int             @default(0)
+  hodlLastUpdated DateTime?
 }
 
 model AirdropProfile {

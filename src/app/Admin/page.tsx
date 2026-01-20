@@ -12,6 +12,7 @@ interface UserStat {
   wallet: string
   totalAllocation: number
   lastCheckIn: string
+  isApproved: boolean // <--- UPDATED
 }
 
 interface Announcement {
@@ -134,18 +135,33 @@ export default function AdminConsole() {
     finally { setLoadingUsers(false) }
   }
 
-  // NEW: Export Handler
+  // NEW: Updated to toggle generic 'isApproved'
+  const handleToggleAccess = async (targetWallet: string, currentStatus: boolean) => {
+    const result = await executeSecureAction(
+      'Toggle User Approval', 
+      '/api/admin/users/access', 
+      'POST', 
+      { targetWallet, approved: !currentStatus }
+    )
+    
+    if (result) {
+      // Optimistic Update
+      setUserList(prev => prev.map(u => 
+        u.wallet === targetWallet ? { ...u, isApproved: !currentStatus } : u
+      ))
+    }
+  }
+
   const handleExportData = async () => {
     const data = await executeSecureAction('Export Airdrop Data', '/api/admin/export', 'POST', {})
     
     if (data && data.data) {
-      // Convert JSON to Blob and force download
       const jsonString = `data:text/json;chatset=utf-8,${encodeURIComponent(
         JSON.stringify(data.data, null, 2)
       )}`;
       const link = document.createElement("a");
       link.href = jsonString;
-      link.download = `noble_airdrop_snapshot_${new Date().toISOString().slice(0,10)}.json`;
+      link.download = `noble_snapshot_${new Date().toISOString().slice(0,10)}.json`;
       link.click();
       toast.success("Download Started");
     }
@@ -203,7 +219,6 @@ export default function AdminConsole() {
 
         {/* 1. USER STATS & REGISTRY */}
         <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
-           {/* Card 1: Total Users */}
            <div className="bg-gray-900/60 border border-white/5 p-8 rounded-3xl flex justify-between items-center">
               <div>
                 <p className="text-xs text-gray-500 font-black uppercase tracking-widest mb-1">Total Users</p>
@@ -216,7 +231,6 @@ export default function AdminConsole() {
                 >
                   {showUserList ? 'Hide Registry' : 'View Registry'}
                 </button>
-                {/* EXPORT BUTTON */}
                 <button 
                   onClick={handleExportData}
                   disabled={processing}
@@ -227,7 +241,6 @@ export default function AdminConsole() {
               </div>
            </div>
            
-           {/* Card 2: Total Allocation */}
            <div className="bg-gray-900/60 border border-white/5 p-8 rounded-3xl">
               <p className="text-xs text-gray-500 font-black uppercase tracking-widest mb-1">Total Airdrop Allocated</p>
               <div className="flex items-baseline gap-3">
@@ -242,7 +255,7 @@ export default function AdminConsole() {
            </div>
         </section>
 
-        {/* EXPANDABLE USER LIST */}
+        {/* EXPANDABLE USER LIST WITH APPROVAL TOGGLE */}
         {showUserList && (
           <div className="bg-gray-900 border border-white/10 rounded-3xl overflow-hidden animate-in fade-in slide-in-from-top-4">
             <div className="p-6 border-b border-white/5 bg-black/20">
@@ -257,7 +270,8 @@ export default function AdminConsole() {
                     <tr>
                       <th className="p-4">Wallet</th>
                       <th className="p-4">Allocated</th>
-                      <th className="p-4 text-right">Last Active</th>
+                      <th className="p-4">Last Active</th>
+                      <th className="p-4 text-center">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
@@ -265,8 +279,21 @@ export default function AdminConsole() {
                       <tr key={i} className="hover:bg-white/5 transition-colors font-mono text-xs">
                         <td className="p-4 text-gray-300">{user.wallet}</td>
                         <td className="p-4 text-blue-400 font-bold">{user.totalAllocation?.toLocaleString() || 0}</td>
-                        <td className="p-4 text-right text-gray-600">
+                        <td className="p-4 text-gray-600">
                           {user.lastCheckIn ? new Date(user.lastCheckIn).toLocaleDateString() : 'Never'}
+                        </td>
+                        <td className="p-4 text-center">
+                          <button
+                            onClick={() => handleToggleAccess(user.wallet, user.isApproved)}
+                            disabled={processing}
+                            className={`px-3 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-all ${
+                              user.isApproved 
+                                ? 'bg-green-500/20 text-green-500 hover:bg-green-500/30'
+                                : 'bg-red-500/20 text-red-500 hover:bg-red-500/30'
+                            }`}
+                          >
+                            {user.isApproved ? 'Approved' : 'Pending'}
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -303,8 +330,6 @@ export default function AdminConsole() {
 
         {/* 3. ANNOUNCEMENTS MANAGER */}
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* List of Announcements */}
           <div className="lg:col-span-2 space-y-4">
             <h3 className="text-xl font-black uppercase tracking-tighter text-white">Live Announcements</h3>
             {announcements.length === 0 ? (
@@ -328,7 +353,6 @@ export default function AdminConsole() {
             )}
           </div>
 
-          {/* Editor */}
           <div className="bg-blue-600/5 border border-blue-500/10 p-6 rounded-3xl h-fit sticky top-8">
             <h3 className="text-sm font-black uppercase tracking-widest text-blue-400 mb-6">
               {isEditing ? 'Edit Announcement' : 'New Announcement'}
@@ -371,9 +395,7 @@ export default function AdminConsole() {
               </div>
             </div>
           </div>
-
         </section>
-
       </div>
     </main>
   )

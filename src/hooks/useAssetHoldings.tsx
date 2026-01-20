@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
 
-// Import Hashlists (Corrected filenames based on your screenshot)
+// Import Hashlists
 import geneticsHashlist from '@/data/noble_genetics_hashlist.json'
 import extractsHashlist from '@/data/noble_extracts_hashlist.json'
 import namasteHashlist from '@/data/namaste_hashlist.json'
 import d3fendersHashlist from '@/data/d3fenders_hashlist.json'
 import sacHashlist from '@/data/sac_hashlist.json'
-import k9Hashlist from '@/data/solanak9s_hashlist.json' // <--- Corrected from screenshot
+import k9Hashlist from '@/data/solanak9s_hashlist.json'
 import senseiHashlist from '@/data/sensei_hashlist.json'
 import tsoHashlist from '@/data/tso_hashlist.json'
+import ttcHashlist from '@/data/TimeTravelingChimps_hashlist.json'
+import p1Hashlist from '@/data/Player1_hashlist.json'
+// NEW IMPORT
+import ggHashlist from '@/data/GalacticGecko_hashlist.json'
 
 export interface AssetHoldings {
   wallet: string
@@ -23,6 +27,10 @@ export interface AssetHoldings {
   immortalGecko: number
   d3fenders: number
   stonedApeCrew: number
+  timeTravelingChimps: number
+  player1: number
+  // NEW TYPE
+  galacticGeckos: number
 }
 
 // Convert ALL Hashlists to Sets for O(1) instant lookup
@@ -34,14 +42,17 @@ const hashlistSets = {
   sac: new Set(sacHashlist),
   k9: new Set(k9Hashlist),
   sensei: new Set(senseiHashlist),
-  tso: new Set(tsoHashlist)
+  tso: new Set(tsoHashlist),
+  ttc: new Set(ttcHashlist),
+  p1: new Set(p1Hashlist),
+  // NEW SET
+  gg: new Set(ggHashlist),
 }
 
 export function useAssetHoldings(wallets: string[]) {
   const [holdings, setHoldings] = useState<AssetHoldings[]>([])
   const [loading, setLoading] = useState(false)
   
-  // Create a storage key based on the sorted list of wallets
   const storageKey = `noble_assets_${wallets.sort().join('_')}`
 
   const fetchData = useCallback(async (forceRefresh = false) => {
@@ -55,7 +66,6 @@ export function useAssetHoldings(wallets: string[]) {
       if (cached) {
         try {
           const parsed = JSON.parse(cached)
-          // Valid for 24 hours
           if (Date.now() - parsed.timestamp < 1000 * 60 * 60 * 24) {
             console.log("⚡ Loaded assets from cache")
             setHoldings(parsed.data)
@@ -70,7 +80,8 @@ export function useAssetHoldings(wallets: string[]) {
       console.log("🌐 Fetching batch data...")
       const walletString = wallets.join(',')
 
-      // 2. BATCH FETCH from your API
+      // 2. BATCH FETCH
+      // We keep the immortal-geckos fetch as requested for Airdrop logic
       const [holdingsRes, geckosRes] = await Promise.all([
         fetch(`/api/holdings?wallets=${walletString}`).then(r => r.json()),
         fetch(`/api/immortal-geckos?wallets=${walletString}`).then(r => r.json())
@@ -87,28 +98,29 @@ export function useAssetHoldings(wallets: string[]) {
         // Initialize counts
         let counts = { 
             genetics: 0, extracts: 0, namaste: 0, d3fenders: 0, sac: 0,
-            k9: 0, sensei: 0, tso: 0 
+            k9: 0, sensei: 0, tso: 0, ttc: 0, p1: 0, gg: 0 
         }
         
-        // Loop through LIVE NFTs from Helius
+        // Loop through LIVE NFTs
         nfts.forEach((nft: any) => {
           const id = nft.id;
-          // Check grouping (Collection Address) if available
           const group = nft.grouping?.[0]?.group_value;
           
-          // Check against all hashlists
           if (hashlistSets.genetics.has(id) || hashlistSets.genetics.has(group)) counts.genetics++
           else if (hashlistSets.extracts.has(id) || hashlistSets.extracts.has(group)) counts.extracts++
           else if (hashlistSets.namaste.has(id) || hashlistSets.namaste.has(group)) counts.namaste++
           else if (hashlistSets.d3fenders.has(id) || hashlistSets.d3fenders.has(group)) counts.d3fenders++
           else if (hashlistSets.sac.has(id) || hashlistSets.sac.has(group)) counts.sac++
-          // Live checks for the previously "holder-based" collections
           else if (hashlistSets.k9.has(id) || hashlistSets.k9.has(group)) counts.k9++
           else if (hashlistSets.sensei.has(id) || hashlistSets.sensei.has(group)) counts.sensei++
           else if (hashlistSets.tso.has(id) || hashlistSets.tso.has(group)) counts.tso++
+          else if (hashlistSets.ttc.has(id) || hashlistSets.ttc.has(group)) counts.ttc++
+          else if (hashlistSets.p1.has(id) || hashlistSets.p1.has(group)) counts.p1++
+          // NEW CHECK: Galactic Geckos via Hashlist
+          else if (hashlistSets.gg.has(id) || hashlistSets.gg.has(group)) counts.gg++
         })
 
-        // Filter Geckos for this specific wallet
+        // Filter Immortal Geckos (Legacy logic preserved)
         const geckoCount = geckoData.filter((g: any) => 
             g.ownerWallet?.toLowerCase() === wallet.toLowerCase()
         ).length
@@ -125,13 +137,16 @@ export function useAssetHoldings(wallets: string[]) {
           solanaK9s: counts.k9,
           sensei: counts.sensei,
           tso: counts.tso,
-          immortalGecko: geckoCount
+          immortalGecko: geckoCount,
+          timeTravelingChimps: counts.ttc,
+          player1: counts.p1,
+          // NEW FIELD
+          galacticGeckos: counts.gg
         }
       })
 
       setHoldings(processedResults)
 
-      // 4. SAVE TO STORAGE
       localStorage.setItem(storageKey, JSON.stringify({
         timestamp: Date.now(),
         data: processedResults

@@ -14,6 +14,9 @@ const BOOSTS = {
   genetics: 5, extracts: 3, namaste: 2, solanaK9s: 1,
   sensei: 1.5, tso: 2, ntwrk: 1, immortalGecko: 3,
   d3fenders: 1, stonedApeCrew: 1,
+  // NEW BOOSTS
+  timeTravelingChimps: 1,
+  player1: 1
 }
 
 const NTWRK_BOOST_THRESHOLD = 500000;
@@ -24,7 +27,6 @@ export default function AirdropPage() {
   const { publicKey, connected, signMessage, disconnect } = useWallet()
   const router = useRouter()
 
-  // --- State ---
   const [linkedWallets, setLinkedWallets] = useState<string[]>([]) 
   const [airdropProgress, setAirdropProgress] = useState(0)
   const [userTotalAllocation, setUserTotalAllocation] = useState(0)
@@ -33,45 +35,35 @@ export default function AirdropPage() {
   const [isVerified, setIsVerified] = useState(false)
   const [isVerifying, setIsVerifying] = useState(false)
   
-  // FIX 1: Start false so we don't block the UI if not verifying
   const [profileLoading, setProfileLoading] = useState(false) 
   const [sessionClaimed, setSessionClaimed] = useState(0)
 
-  // --- 1. SAFELY LOAD WALLETS (The Fix) ---
   useEffect(() => {
     try {
-      // Safely parse localStorage to handle both old Strings and new Objects
       const stored = JSON.parse(localStorage.getItem('noble_wallets') || '[]')
-      
       if (Array.isArray(stored)) {
         if (stored.length > 0 && typeof stored[0] === 'object') {
-          // New Format: Extract just the addresses
           setLinkedWallets(stored.map((w: any) => w.address))
         } else {
-          // Old Format: It's already strings
           setLinkedWallets(stored)
         }
       }
-    } catch (e) {
-      console.error("Wallet load error", e)
-    }
+    } catch (e) { console.error("Wallet load error", e) }
 
-    // Also fetch Global Stats immediately so the bar works
     fetch('/api/airdrop?global=true')
       .then(res => res.json())
       .then(data => setAirdropProgress(data.totalAllocated || 0))
       .catch(err => console.error("Global stats failed", err))
   }, [])
 
-  // --- 2. USE THE HOOK ---
   const { holdings: walletData, loading: assetsLoading } = useAssetHoldings(linkedWallets)
 
-  // --- 3. AGGREGATE TOTALS ---
   const holdings = useMemo(() => {
     const initial = {
       genetics: 0, extracts: 0, namaste: 0, solanaK9s: 0,
       sensei: 0, tso: 0, d3fenders: 0, stonedApeCrew: 0,
       immortalGecko: 0, ntwrkBalance: 0,
+      timeTravelingChimps: 0, player1: 0
     }
 
     if (!walletData || walletData.length === 0) return initial
@@ -87,10 +79,12 @@ export default function AirdropPage() {
       stonedApeCrew: acc.stonedApeCrew + curr.stonedApeCrew,
       immortalGecko: acc.immortalGecko + curr.immortalGecko,
       ntwrkBalance: acc.ntwrkBalance + curr.ntwrkBalance,
+      // NEW REDUCERS
+      timeTravelingChimps: acc.timeTravelingChimps + (curr.timeTravelingChimps || 0),
+      player1: acc.player1 + (curr.player1 || 0),
     }), initial)
   }, [walletData])
 
-  // --- Calculations ---
   const ntwrkBoostTiers = useMemo(() => Math.floor((holdings.ntwrkBalance || 0) / NTWRK_BOOST_THRESHOLD), [holdings.ntwrkBalance])
   
   const totalBoost = useMemo(() => {
@@ -104,6 +98,9 @@ export default function AirdropPage() {
       (holdings.immortalGecko * BOOSTS.immortalGecko) + 
       (holdings.d3fenders * BOOSTS.d3fenders) +
       (holdings.stonedApeCrew * BOOSTS.stonedApeCrew) + 
+      // NEW BOOST CALCS
+      (holdings.timeTravelingChimps * BOOSTS.timeTravelingChimps) +
+      (holdings.player1 * BOOSTS.player1) +
       (ntwrkBoostTiers * BOOSTS.ntwrk)
     )
   }, [holdings, ntwrkBoostTiers])
@@ -112,7 +109,6 @@ export default function AirdropPage() {
     return (totalBoost / 100) * WEEKLY_ALLOCATION;
   }, [totalBoost]);
 
-  // --- Data Fetching (Profile Only) ---
   const fetchUserProfile = useCallback(async () => {
     if (!publicKey) return;
     setProfileLoading(true);
@@ -135,20 +131,17 @@ export default function AirdropPage() {
       const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)); 
       setCanCheckIn(!lDate || diffDays >= 7);
 
-      // Merge API wallets with LocalStorage wallets to be safe
       if (userData.linkedWallets && userData.linkedWallets.length > 0) {
         setLinkedWallets(prev => Array.from(new Set([...prev, ...userData.linkedWallets])));
       }
 
     } catch (e) {
       console.error("Sync Error:", e);
-      // Don't toast error here to avoid spamming users on load
     } finally {
       setProfileLoading(false);
     }
   }, [publicKey]);
 
-  // --- Actions ---
   const verifyWallet = useCallback(async () => {
     if (!publicKey || !signMessage) return
     setIsVerifying(true)
@@ -213,7 +206,6 @@ export default function AirdropPage() {
     }
   }
 
-  // --- Effects ---
   useEffect(() => {
     const stored = localStorage.getItem('verifiedWallet');
     if (connected && stored === publicKey?.toBase58()) {
@@ -221,7 +213,6 @@ export default function AirdropPage() {
       fetchUserProfile();
     } else if (connected) {
       setIsVerified(false);
-      // DO NOT reset linkedWallets here, keep what we loaded from LS so stats still show
     }
   }, [connected, publicKey, fetchUserProfile]);
 
@@ -240,7 +231,6 @@ export default function AirdropPage() {
           </button>
         </header>
 
-        {/* Verification Banner */}
         {!isVerified && (
           <div className="mb-8 p-6 bg-yellow-500/10 border border-yellow-500/20 rounded-3xl flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-4 text-yellow-500">
@@ -253,7 +243,6 @@ export default function AirdropPage() {
           </div>
         )}
 
-        {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
           {/* Global Progress */}
           <div className="bg-gray-900/40 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/5 shadow-xl">
@@ -315,6 +304,9 @@ export default function AirdropPage() {
                   { label: 'D3fenders', val: holdings.d3fenders, mult: BOOSTS.d3fenders },
                   { label: 'Stoned Ape Crew', val: holdings.stonedApeCrew, mult: BOOSTS.stonedApeCrew },
                   { label: 'Immortal Geckos', val: holdings.immortalGecko, mult: BOOSTS.immortalGecko },
+                  // NEW ROWS
+                  { label: 'Time Traveling Chimps', val: holdings.timeTravelingChimps, mult: BOOSTS.timeTravelingChimps },
+                  { label: 'Player 1', val: holdings.player1, mult: BOOSTS.player1 },
                   { label: 'NTWRK Staking', val: `${holdings.ntwrkBalance.toLocaleString()} NTWRK`, mult: '1x per 500k', final: ntwrkBoostTiers * BOOSTS.ntwrk }
                 ].map((row, i) => (
                   <tr key={i} className="border-b border-white/5 last:border-0">
@@ -333,7 +325,6 @@ export default function AirdropPage() {
           </div>
         </section>
 
-        {/* Claim Section */}
         <section className="max-w-2xl mx-auto bg-gray-900/40 backdrop-blur-md p-10 rounded-[3rem] border border-white/5 text-center shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent" />
           <h2 className="text-2xl font-black uppercase tracking-tighter mb-4">Secure Weekly Allocation</h2>
