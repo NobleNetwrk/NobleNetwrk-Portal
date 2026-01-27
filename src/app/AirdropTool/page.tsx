@@ -111,7 +111,6 @@ export default function AirdropTool() {
             const res = await fetch(`/api/members?walletAddress=${walletAddress}`);
             if (res.ok) {
                 const data = await res.json();
-                // Check for 'isAirdropApproved' field (We will add this to DB next)
                 if (data.member && data.member.isAirdropApproved) {
                     setIsAuthorized(true);
                 } else {
@@ -513,14 +512,14 @@ export default function AirdropTool() {
   };
 
   // --- ACCESS CONTROL RENDERING ---
-  if (!publicKey) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">Please Connect Wallet</div>;
+  if (!publicKey) return <div className="min-h-screen bg-[#0a0a0b] flex items-center justify-center text-[#c5a059] font-black uppercase tracking-widest">Connect Wallet to Access</div>;
 
   if (isCheckingAuth) {
       return (
-          <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">
+          <div className="min-h-screen bg-[#0a0a0b] flex items-center justify-center text-white">
               <div className="flex flex-col items-center gap-4">
-                  <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                  <p className="text-xs uppercase tracking-widest text-gray-500">Verifying Clearance Level...</p>
+                  <div className="w-8 h-8 border-2 border-[#c5a059] border-t-transparent rounded-full animate-spin"></div>
+                  <p className="text-xs uppercase tracking-widest text-[#c5a059]">Verifying Admin Clearance...</p>
               </div>
           </div>
       );
@@ -528,19 +527,20 @@ export default function AirdropTool() {
 
   if (!isAuthorized) {
       return (
-          <main className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
-              <div className="max-w-md w-full bg-red-900/10 border border-red-500/20 rounded-3xl p-8 text-center backdrop-blur-xl">
-                  <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
-                      <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+          <main className="min-h-screen bg-[#0a0a0b] flex items-center justify-center p-4">
+              <div className="max-w-md w-full bg-[#141416] border border-[#c5a059]/30 rounded-[2rem] p-8 text-center backdrop-blur-xl shadow-2xl relative overflow-hidden">
+                   <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#927035] via-[#c5a059] to-[#927035]" />
+                  <div className="w-16 h-16 bg-[#c5a059]/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-[#c5a059]/30">
+                      <svg className="w-8 h-8 text-[#c5a059]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
                   </div>
                   <h1 className="text-2xl font-black text-white uppercase tracking-tighter mb-2">Restricted Access</h1>
-                  <p className="text-gray-400 text-sm mb-6">
-                      The Airdrop Tool is a feature reserved for authorized NobleNetwrk users only.
+                  <p className="text-gray-400 text-sm mb-6 font-medium">
+                      The Airdrop Terminal is a secure environment for authorized NobleNetwrk officers only.
                   </p>
-                  <p className="text-xs text-gray-500 mb-8">
-                      If you require access, please contact <span className="text-blue-400 font-bold">NobleNetwrk Administration</span> for approval.
+                  <p className="text-[10px] text-gray-500 mb-8 uppercase tracking-widest">
+                      Clearance Level: <span className="text-[#c5a059] font-bold">Unauthorized</span>
                   </p>
-                  <button onClick={() => router.push('/Portal')} className="w-full py-3 bg-white/5 hover:bg-white/10 rounded-xl text-white font-bold uppercase text-xs tracking-widest transition-colors">
+                  <button onClick={() => router.push('/Portal')} className="w-full py-3 bg-[#0a0a0b] hover:bg-[#1f1f22] border border-white/5 hover:border-[#c5a059]/50 rounded-xl text-gray-400 hover:text-[#c5a059] font-bold uppercase text-xs tracking-widest transition-all">
                       Return to Portal
                   </button>
               </div>
@@ -549,41 +549,50 @@ export default function AirdropTool() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-4 md:p-8">
-      <div className="max-w-4xl mx-auto">
+    <main className="min-h-screen bg-[#0a0a0b] text-white p-4 md:p-8 relative overflow-hidden">
+      {/* Background Ambient */}
+      <div className="fixed top-[-20%] left-[-10%] w-[800px] h-[800px] bg-[#c5a059]/5 rounded-full blur-[120px] pointer-events-none" />
+
+      <div className="max-w-4xl mx-auto relative z-10">
         <div className="flex justify-between items-center mb-8">
             <div className="flex flex-col">
-                <h1 className="text-3xl font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
-                    Airdrop Tool
+                <h1 className="text-3xl font-black uppercase tracking-tighter text-white">
+                    Airdrop <span className="text-[#c5a059]">Tool</span>
                 </h1>
-                <span className="text-[10px] text-gray-500 font-mono">v2.1 // Burner Protocol Active</span>
+                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">v2.1 // Burner Protocol Active</span>
             </div>
-            <button onClick={() => router.push('/Portal')} className="text-gray-500 hover:text-white text-xs font-bold uppercase">Back to Portal</button>
+            <button 
+                onClick={() => router.push('/Portal')} 
+                className="bg-[#141416] border border-white/5 hover:border-[#c5a059]/50 text-gray-400 hover:text-[#c5a059] px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+            >
+                Back to Portal
+            </button>
         </div>
 
         {/* --- HOW IT WORKS (NEW) --- */}
         {showHelp && (
-            <div className="mb-8 bg-blue-900/10 border border-blue-500/20 p-6 rounded-2xl animate-in fade-in slide-in-from-top-4">
-                <div className="flex justify-between items-start mb-4">
-                    <h3 className="text-blue-400 font-bold uppercase text-sm tracking-widest">How It Works</h3>
+            <div className="mb-8 bg-[#141416] border border-[#c5a059]/20 p-6 rounded-[2rem] animate-in fade-in slide-in-from-top-4 shadow-xl">
+                <div className="flex justify-between items-start mb-4 border-b border-white/5 pb-2">
+                    <h3 className="text-[#c5a059] font-black uppercase text-xs tracking-[0.2em]">Operational Guide</h3>
                     <button onClick={() => setShowHelp(false)} className="text-gray-500 hover:text-white">✕</button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs text-gray-300">
-                    <div className="bg-black/20 p-3 rounded-lg">
-                        <div className="text-blue-500 font-black mb-1">1. ANALYZE</div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs text-gray-400">
+                    <div className="bg-[#0a0a0b] p-4 rounded-2xl border border-white/5">
+                        <div className="text-white font-black mb-1 uppercase text-[10px] tracking-widest">1. Analyze</div>
                         Select a token and target communities. We scan the blockchain to build a recipient list.
                     </div>
-                    <div className="bg-black/20 p-3 rounded-lg border border-yellow-500/20">
-                        <div className="text-yellow-500 font-black mb-1">2. SECURE</div>
-                        We generate a temporary <strong>Airdrop Key</strong>. <span className="text-white underline">You MUST download this backup</span> in case the browser closes.
+                    <div className="bg-[#0a0a0b] p-4 rounded-2xl border border-[#c5a059]/30 relative overflow-hidden">
+                         <div className="absolute top-0 right-0 w-8 h-8 bg-[#c5a059]/20 rounded-bl-xl flex items-center justify-center text-[#c5a059] font-black text-[10px]">!</div>
+                        <div className="text-[#c5a059] font-black mb-1 uppercase text-[10px] tracking-widest">2. Secure</div>
+                        We generate a temporary <strong>Airdrop Key</strong>. <span className="text-white underline decoration-[#c5a059]">You MUST download this backup</span>.
                     </div>
-                    <div className="bg-black/20 p-3 rounded-lg">
-                        <div className="text-green-500 font-black mb-1">3. FUND & SEND</div>
-                        Sign <strong>ONE transaction</strong> to fund the temporary wallet. It will automatically distribute assets to everyone.
+                    <div className="bg-[#0a0a0b] p-4 rounded-2xl border border-white/5">
+                        <div className="text-white font-black mb-1 uppercase text-[10px] tracking-widest">3. Fund & Send</div>
+                        Sign <strong>ONE transaction</strong>. The burner wallet automatically distributes assets to everyone.
                     </div>
-                    <div className="bg-black/20 p-3 rounded-lg">
-                        <div className="text-purple-500 font-black mb-1">4. RECLAIM</div>
-                        Once finished, any remaining SOL (dust) & Tokens are automatically refunded to your main wallet.
+                    <div className="bg-[#0a0a0b] p-4 rounded-2xl border border-white/5">
+                        <div className="text-white font-black mb-1 uppercase text-[10px] tracking-widest">4. Reclaim</div>
+                        Once finished, any remaining SOL (dust) & Tokens are automatically refunded.
                     </div>
                 </div>
             </div>
@@ -592,13 +601,13 @@ export default function AirdropTool() {
         {/* --- STEP 1: CONFIGURATION --- */}
         {step === 1 && (
             <div className="space-y-8 animate-in fade-in">
-                <div className="bg-gray-900/50 p-6 rounded-3xl border border-white/5">
-                    <h2 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-4">1. Select Asset</h2>
+                <div className="bg-[#141416] p-8 rounded-[2.5rem] border border-white/5 shadow-xl">
+                    <h2 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-4">1. Select Asset</h2>
                     <div className="relative">
                         <select 
                             value={selectedTokenMint}
                             onChange={(e) => setSelectedTokenMint(e.target.value)}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white appearance-none cursor-pointer hover:border-blue-500/50 transition-colors focus:outline-none focus:border-blue-500 font-mono text-sm"
+                            className="w-full bg-[#0a0a0b] border border-white/10 rounded-xl p-4 text-white appearance-none cursor-pointer hover:border-[#c5a059]/50 transition-colors focus:outline-none focus:border-[#c5a059] font-mono text-sm shadow-inner"
                         >
                             <option value="" disabled>Select a token from your wallet...</option>
                             {userTokens.map((token) => (
@@ -609,33 +618,34 @@ export default function AirdropTool() {
                                 </option>
                             ))}
                         </select>
+                         <div className="absolute right-4 top-4 pointer-events-none text-gray-500">▼</div>
                     </div>
                 </div>
 
-                <div className="bg-gray-900/50 p-6 rounded-3xl border border-white/5">
-                    <h2 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-4">2. Total Airdrop Amount</h2>
+                <div className="bg-[#141416] p-8 rounded-[2.5rem] border border-white/5 shadow-xl">
+                    <h2 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-4">2. Total Airdrop Amount</h2>
                     <input 
                         type="number" 
                         value={totalAirdropAmount}
                         onChange={(e) => setTotalAirdropAmount(e.target.value)}
                         placeholder="0.00"
-                        className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-2xl font-mono focus:border-blue-500 outline-none transition-colors"
+                        className="w-full bg-[#0a0a0b] border border-white/10 rounded-xl p-4 text-2xl font-mono focus:border-[#c5a059] outline-none transition-colors text-[#c5a059] placeholder-gray-800"
                     />
                 </div>
 
-                <div className="bg-gray-900/50 p-6 rounded-3xl border border-white/5">
-                    <h2 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-4">3. Select Target Communities</h2>
+                <div className="bg-[#141416] p-8 rounded-[2.5rem] border border-white/5 shadow-xl">
+                    <h2 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-4">3. Select Target Communities</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {COMMUNITY_OPTIONS.map((c) => (
                             <div 
                                 key={c.id}
                                 onClick={() => toggleCommunity(c.id)}
-                                className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${selectedCommunities.includes(c.id) ? 'bg-purple-900/30 border-purple-500' : 'bg-black/20 border-white/5 hover:border-white/20'}`}
+                                className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all duration-300 ${selectedCommunities.includes(c.id) ? 'bg-[#c5a059]/10 border-[#c5a059] shadow-[0_0_15px_rgba(197,160,89,0.1)]' : 'bg-[#0a0a0b] border-white/5 hover:border-white/20'}`}
                             >
-                                <div className={`w-5 h-5 rounded flex items-center justify-center border ${selectedCommunities.includes(c.id) ? 'bg-purple-500 border-purple-500' : 'border-gray-600'}`}>
-                                    {selectedCommunities.includes(c.id) && "✓"}
+                                <div className={`w-5 h-5 rounded flex items-center justify-center border transition-colors ${selectedCommunities.includes(c.id) ? 'bg-[#c5a059] border-[#c5a059] text-black' : 'border-gray-800 bg-black'}`}>
+                                    {selectedCommunities.includes(c.id) && <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>}
                                 </div>
-                                <span className="text-sm font-bold">{c.label}</span>
+                                <span className={`text-xs font-bold uppercase tracking-wide ${selectedCommunities.includes(c.id) ? 'text-[#c5a059]' : 'text-gray-400'}`}>{c.label}</span>
                             </div>
                         ))}
                     </div>
@@ -644,9 +654,9 @@ export default function AirdropTool() {
                 <button 
                     onClick={handleAnalyze}
                     disabled={isFetchingRecipients}
-                    className="w-full py-6 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black uppercase tracking-widest text-lg shadow-xl shadow-blue-900/20 disabled:opacity-50"
+                    className="w-full py-6 bg-gradient-to-r from-[#c5a059] to-[#927035] hover:brightness-110 rounded-2xl font-black uppercase tracking-widest text-lg shadow-lg shadow-[#c5a059]/20 text-black disabled:opacity-50 transition-all active:scale-[0.99]"
                 >
-                    {isFetchingRecipients ? 'Scanning Snapshots...' : 'Analyze & Review'}
+                    {isFetchingRecipients ? 'Scanning Blockchain...' : 'Analyze & Review'}
                 </button>
             </div>
         )}
@@ -654,72 +664,77 @@ export default function AirdropTool() {
         {/* --- STEP 2: REVIEW & EXECUTE --- */}
         {step === 2 && (
             <div className="space-y-8 animate-in slide-in-from-bottom-8">
-                <div className="bg-gradient-to-br from-gray-900 to-black p-8 rounded-[2.5rem] border border-white/10 text-center relative">
+                <div className="bg-gradient-to-br from-[#1a1a1c] to-[#0a0a0b] p-8 rounded-[2.5rem] border border-[#c5a059]/20 text-center relative overflow-hidden shadow-2xl">
                     
                     {/* SAFETY WARNING BANNER */}
-                    <div className="absolute top-4 right-4 md:right-8 md:top-8 bg-red-500/10 border border-red-500/50 rounded-lg p-2 flex items-center gap-2">
-                        <span className="text-red-400 text-xs font-bold uppercase blink">Active Burner Session</span>
-                        <div className="w-2 h-2 bg-red-500 rounded-full animate-ping" />
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-600 via-red-500 to-red-600 animate-pulse" />
+                    <div className="absolute top-4 right-4 md:right-8 md:top-8 bg-red-900/20 border border-red-500/50 rounded-lg px-3 py-1 flex items-center gap-2">
+                        <span className="text-red-500 text-[9px] font-black uppercase tracking-widest">Active Burner Session</span>
+                        <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping" />
                     </div>
 
-                    <p className="text-gray-500 uppercase tracking-widest text-xs font-bold mb-2">Ready to Drop</p>
-                    <h2 className="text-5xl font-black text-white mb-2">{totalAirdropAmount} <span className="text-2xl text-gray-500">{selectedToken?.symbol}</span></h2>
+                    <p className="text-gray-500 uppercase tracking-[0.3em] text-[10px] font-bold mb-4 mt-4">Ready to Drop</p>
+                    <h2 className="text-5xl font-black text-white mb-2 tracking-tighter">{totalAirdropAmount} <span className="text-2xl text-[#c5a059] font-normal">{selectedToken?.symbol}</span></h2>
                     
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8 max-w-3xl mx-auto">
-                        <div className="bg-white/5 p-4 rounded-xl">
-                            <p className="text-gray-500 text-[10px] uppercase font-bold">
-                                {selectedCommunities.includes('portal_users') ? 'Total Weight (Score+NFTs)' : 'Total NFTs'}
+                        <div className="bg-[#0a0a0b] p-4 rounded-2xl border border-white/5">
+                            <p className="text-gray-500 text-[9px] uppercase font-black tracking-widest mb-1">
+                                {selectedCommunities.includes('portal_users') ? 'Total Weight' : 'Total NFTs'}
                             </p>
-                            <p className="text-xl font-bold text-blue-400">{totalWeight.toLocaleString()}</p>
+                            <p className="text-xl font-bold text-white">{totalWeight.toLocaleString()}</p>
                         </div>
-                        <div className="bg-white/5 p-4 rounded-xl">
-                            <p className="text-gray-500 text-[10px] uppercase font-bold">Amount Per Unit</p>
-                            <p className="text-xl font-bold text-green-400">{(parseFloat(totalAirdropAmount) / totalWeight).toFixed(4)}</p>
+                        <div className="bg-[#0a0a0b] p-4 rounded-2xl border border-white/5">
+                            <p className="text-gray-500 text-[9px] uppercase font-black tracking-widest mb-1">Amount Per Unit</p>
+                            <p className="text-xl font-bold text-[#c5a059]">{(parseFloat(totalAirdropAmount) / totalWeight).toFixed(4)}</p>
                         </div>
-                        <div className="bg-white/5 p-4 rounded-xl text-left">
-                            <p className="text-gray-500 text-[10px] uppercase font-bold mb-1">Max Estimated Cost</p>
-                            <p className="text-xl font-bold text-orange-400">~{estCost.total.toFixed(4)} SOL</p>
-                            <div className="text-[10px] text-gray-500 mt-2 space-y-1 font-mono">
-                                <div className="flex justify-between"><span>Network Fees:</span> <span>{estCost.fee.toFixed(5)}</span></div>
+                        <div className="bg-[#0a0a0b] p-4 rounded-2xl border border-white/5 text-left">
+                            <p className="text-gray-500 text-[9px] uppercase font-black tracking-widest mb-1">Est. Cost</p>
+                            <p className="text-xl font-bold text-gray-300">~{estCost.total.toFixed(4)} SOL</p>
+                            <div className="text-[9px] text-gray-600 mt-2 space-y-1 font-mono">
+                                <div className="flex justify-between"><span>Fees:</span> <span>{estCost.fee.toFixed(5)}</span></div>
                                 {!estCost.isSol && (
-                                    <div className="flex justify-between text-orange-500/70"><span>Max Rent (New Accts):</span> <span>{estCost.rent.toFixed(4)}</span></div>
+                                    <div className="flex justify-between text-[#c5a059]/70"><span>Rent:</span> <span>{estCost.rent.toFixed(4)}</span></div>
                                 )}
                             </div>
                         </div>
                     </div>
 
-                    <div className="flex justify-between items-center mt-6 p-4 bg-yellow-900/10 border border-yellow-500/20 rounded-xl">
+                    <div className="flex flex-col md:flex-row justify-between items-center mt-8 p-4 bg-[#c5a059]/5 border border-[#c5a059]/20 rounded-2xl gap-4">
                         <div className="text-left">
-                            <p className="text-yellow-500 text-xs font-bold uppercase mb-1">⚠ Critical Safety Step</p>
-                            <p className="text-gray-400 text-[10px]">Download the key for the temporary wallet handling this airdrop. If your browser crashes, you can recover funds with this.</p>
+                            <p className="text-[#c5a059] text-xs font-black uppercase mb-1 tracking-wider flex items-center gap-2">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                Critical Safety Step
+                            </p>
+                            <p className="text-gray-400 text-[10px]">Download the Keypair for the temporary wallet. If your browser crashes, this file is the <span className="text-white font-bold">ONLY</span> way to recover funds.</p>
                         </div>
                         <button 
                             onClick={downloadBurnerKey}
-                            className="text-xs font-bold uppercase tracking-widest bg-yellow-600 hover:bg-yellow-500 text-black px-4 py-2 rounded shadow-lg shadow-yellow-900/20 transition-all flex items-center gap-2"
+                            className="text-[10px] font-black uppercase tracking-widest bg-[#c5a059] hover:bg-[#e4c98c] text-black px-6 py-3 rounded-xl shadow-lg shadow-[#c5a059]/10 transition-all flex items-center gap-2 whitespace-nowrap"
                         >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                             Download Key
                         </button>
                     </div>
 
-                    <div className="mt-4 text-center">
+                    <div className="mt-6 text-center">
                         <button 
                             onClick={() => setShowRecipientList(!showRecipientList)}
-                            className="text-xs text-gray-400 underline hover:text-white"
+                            className="text-[10px] text-gray-500 hover:text-[#c5a059] font-bold uppercase tracking-widest underline decoration-gray-700 underline-offset-4 transition-colors"
                         >
                             {showRecipientList ? 'Hide Recipient List' : 'View Recipient List'}
                         </button>
                     </div>
 
                     {showRecipientList && (
-                        <div className="mt-4 bg-black/40 border border-white/10 rounded-xl max-h-64 overflow-y-auto text-left p-2">
+                        <div className="mt-4 bg-[#0a0a0b] border border-white/10 rounded-xl max-h-64 overflow-y-auto text-left p-2 scrollbar-thin scrollbar-thumb-gray-800">
                             {recipients.map((recipient, i) => (
-                                <div key={i} className="flex justify-between items-center p-2 border-b border-white/5 text-xs font-mono last:border-0 hover:bg-white/5">
-                                    <span className="text-gray-300">
-                                        {i + 1}. {recipient.address.slice(0,4)}...{recipient.address.slice(-4)} 
-                                        <span className="text-gray-500 ml-2">({recipient.count} Weight)</span>
+                                <div key={i} className="flex justify-between items-center p-2 border-b border-white/5 text-xs font-mono last:border-0 hover:bg-white/5 transition-colors">
+                                    <span className="text-gray-400">
+                                        <span className="text-gray-600 mr-2">{i + 1}.</span>
+                                        {recipient.address.slice(0,4)}...{recipient.address.slice(-4)} 
+                                        <span className="text-[#c5a059]/50 ml-2">({recipient.count})</span>
                                     </span>
-                                    <span className="text-green-500">
+                                    <span className="text-[#c5a059]">
                                         {((parseFloat(totalAirdropAmount) / totalWeight) * recipient.count).toFixed(4)}
                                     </span>
                                 </div>
@@ -731,31 +746,36 @@ export default function AirdropTool() {
                 <div className="flex gap-4">
                     <button 
                         onClick={() => setStep(1)}
-                        className="flex-1 py-4 bg-gray-800 hover:bg-gray-700 rounded-xl font-bold uppercase text-xs"
+                        className="flex-1 py-4 bg-[#141416] hover:bg-[#1f1f22] border border-white/5 rounded-2xl font-bold uppercase text-xs text-gray-400 hover:text-white transition-all"
                     >
                         Back
                     </button>
                     <button 
                         onClick={executeAirdrop}
                         disabled={isExecuting}
-                        className="flex-[2] py-4 bg-green-600 hover:bg-green-500 rounded-xl font-black uppercase tracking-widest shadow-lg shadow-green-900/20"
+                        className="flex-[2] py-4 bg-gradient-to-r from-[#c5a059] to-[#927035] hover:brightness-110 rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-[#c5a059]/20 text-black transition-all active:scale-[0.98]"
                     >
-                        {isExecuting ? 'Distributing...' : `Auto-Send All (1-Click)`}
+                        {isExecuting ? 'Distributing Assets...' : `Auto-Send All (1-Click)`}
                     </button>
                 </div>
 
+                {/* CONSOLE LOG TERMINAL */}
                 {(isExecuting || logs.length > 0) && (
-                    <div className="bg-black/50 p-6 rounded-2xl border border-white/10 font-mono text-xs max-h-64 overflow-y-auto">
-                        <div className="flex justify-between items-center mb-4 text-gray-400 uppercase font-bold">
-                            <span>Progress</span>
+                    <div className="bg-[#0a0a0b] p-6 rounded-[2rem] border border-white/10 font-mono text-xs max-h-64 overflow-y-auto shadow-2xl relative">
+                        <div className="sticky top-0 bg-[#0a0a0b] pb-2 border-b border-white/5 flex justify-between items-center mb-4 text-gray-500 uppercase font-bold tracking-widest text-[9px] z-10">
+                            <span>Live Transaction Terminal</span>
                             <span>{progress.current} / {progress.total} Batches</span>
                         </div>
-                        <div className="w-full bg-gray-800 h-2 rounded-full mb-4 overflow-hidden">
-                            <div className="bg-green-500 h-full transition-all duration-300" style={{ width: `${(progress.current / progress.total) * 100}%` }} />
+                        <div className="w-full bg-[#141416] h-1.5 rounded-full mb-4 overflow-hidden">
+                            <div className="bg-[#c5a059] h-full transition-all duration-300 shadow-[0_0_10px_#c5a059]" style={{ width: `${(progress.current / progress.total) * 100}%` }} />
                         </div>
-                        <div className="space-y-1">
+                        <div className="space-y-1.5 pl-2 border-l border-white/10">
                             {logs.map((log, i) => (
-                                <p key={i} className={log.includes('Failed') ? 'text-red-400' : 'text-green-400'}>{log}</p>
+                                <p key={i} className={`flex items-center gap-2 ${log.includes('Failed') ? 'text-red-400' : 'text-gray-300'}`}>
+                                    <span className="text-[8px] text-gray-600">{new Date().toLocaleTimeString()}</span>
+                                    {log.includes('Confirmed') ? <span className="text-[#c5a059] font-bold">✓</span> : '>'}
+                                    {log}
+                                </p>
                             ))}
                         </div>
                     </div>

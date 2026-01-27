@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import senseiHashlist from '@/data/sensei_hashlist.json' 
+import Image from 'next/image'
 
 // Collection started around June 28, 2024 (Unix: 1719532800)
 const COLLECTION_START_TIME = 1719532800; 
@@ -20,7 +21,8 @@ interface PandaLoveData {
   daysHeld: number;
   loveLevel: number; 
   levelLabel: string;
-  color: string;
+  colorClass: string; // Changed from 'color' to 'colorClass' for Tailwind classes
+  borderColor: string;
   isLoading?: boolean; 
 }
 
@@ -51,15 +53,33 @@ export default function PandaLoveLevel() {
     // Level out of 111 based on hold duration
     const level = Math.min(111, Math.floor((days / maxPossibleDays) * 111));
     
+    // --- UPDATED: Noble Metal Hierarchy instead of Rainbow Colors ---
     let label = 'Stranger';
-    let color = 'text-gray-400';
+    let colorClass = 'text-gray-600';
+    let borderColor = 'border-white/5';
 
-    if (level >= 100) { label = 'Soulmate'; color = 'text-pink-500'; }
-    else if (level >= 75) { label = 'Partner'; color = 'text-purple-400'; }
-    else if (level >= 40) { label = 'Friend'; color = 'text-blue-400'; }
-    else if (level >= 10) { label = 'Acquaintance'; color = 'text-emerald-400'; }
+    if (level >= 100) { 
+        label = 'Soulmate'; 
+        colorClass = 'text-[#c5a059] drop-shadow-[0_0_8px_rgba(197,160,89,0.5)]'; // Glowing Gold
+        borderColor = 'border-[#c5a059]';
+    }
+    else if (level >= 75) { 
+        label = 'Partner'; 
+        colorClass = 'text-gray-200'; // Silver/Platinum
+        borderColor = 'border-gray-400/50';
+    }
+    else if (level >= 40) { 
+        label = 'Friend'; 
+        colorClass = 'text-[#927035]'; // Bronze/Dark Gold
+        borderColor = 'border-[#927035]/50';
+    }
+    else if (level >= 10) { 
+        label = 'Acquaintance'; 
+        colorClass = 'text-gray-500'; // Iron/Steel
+        borderColor = 'border-white/10';
+    }
 
-    return { level, label, color };
+    return { level, label, colorClass, borderColor };
   }, [])
 
   const fetchPandaLove = useCallback(async () => {
@@ -111,7 +131,8 @@ export default function PandaLoveLevel() {
         daysHeld: 0,
         loveLevel: 0,
         levelLabel: 'Calculating...',
-        color: 'text-gray-500',
+        colorClass: 'text-gray-500',
+        borderColor: 'border-white/5',
         isLoading: true
       }));
 
@@ -154,7 +175,8 @@ export default function PandaLoveLevel() {
           daysHeld,
           loveLevel: metrics.level,
           levelLabel: metrics.label,
-          color: metrics.color,
+          colorClass: metrics.colorClass,
+          borderColor: metrics.borderColor,
           isLoading: false
         };
       }));
@@ -179,20 +201,33 @@ export default function PandaLoveLevel() {
   }, [connected, fetchPandaLove])
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
+    <main className="min-h-screen bg-[#0a0a0b] text-white p-6 relative overflow-hidden">
+       {/* Ambient Glow Background */}
+       <div className="fixed top-[-20%] right-[-10%] w-[600px] h-[600px] bg-[#c5a059]/5 rounded-full blur-[120px] pointer-events-none" />
+       
+      <div className="max-w-7xl mx-auto relative z-10">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-8">
           <div>
-            <button onClick={() => router.push('/Portal')} className="mb-4 text-[10px] font-black uppercase text-gray-500 hover:text-white tracking-widest block">
-              ← Back to Portal
+            <button 
+                onClick={() => router.push('/Portal')} 
+                className="mb-4 text-[10px] font-black uppercase text-gray-500 hover:text-[#c5a059] tracking-widest flex items-center gap-2 transition-colors"
+            >
+              <span className="text-lg">←</span> Back to Portal
             </button>
-            <h1 className="text-5xl font-black uppercase tracking-tighter">Panda Love Level</h1>
+            <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-white">
+                Panda <span className="text-[#c5a059]">Love Level</span>
+            </h1>
+            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-2">
+                Measure the loyalty of your Sensei Pandas
+            </p>
           </div>
 
           {!loading && (
-            <div className="bg-gradient-to-br from-pink-600/20 to-purple-600/20 border border-pink-500/30 p-8 rounded-[2.5rem] backdrop-blur-2xl shadow-[0_0_50px_-12px_rgba(236,72,153,0.3)]">
-              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-pink-400 mb-2">Your Panda Love Level</p>
-              <p className="text-5xl font-black text-white italic tracking-tighter">{totalPandaLevel}</p>
+            <div className="bg-gradient-to-br from-[#1a1a1c] to-[#0a0a0b] border border-[#c5a059]/20 p-8 rounded-[2.5rem] backdrop-blur-2xl shadow-2xl group hover:border-[#c5a059]/40 transition-all">
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#c5a059] mb-2 opacity-80">Total Love Score</p>
+              <p className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 italic tracking-tighter">
+                {totalPandaLevel.toLocaleString()}
+              </p>
             </div>
           )}
         </div>
@@ -200,50 +235,58 @@ export default function PandaLoveLevel() {
         {loading ? (
           <div className="flex flex-col items-center justify-center h-64 text-center">
             <LoadingSpinner size="lg" />
-            <p className="mt-4 text-[10px] font-black text-gray-600 uppercase tracking-widest animate-pulse">Calculating Love Levels...</p>
+            <p className="mt-6 text-[10px] font-black text-[#c5a059] uppercase tracking-widest animate-pulse">Calculating Love Levels...</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {pandas.map((panda) => (
-              <div key={panda.id} className="group bg-gray-900/40 rounded-[3rem] border border-white/5 overflow-hidden transition-all hover:border-pink-500/40 shadow-2xl">
+              <div key={panda.id} className={`group bg-[#141416] rounded-[2.5rem] border overflow-hidden transition-all hover:scale-[1.02] shadow-xl hover:shadow-2xl hover:shadow-[#c5a059]/10 ${panda.borderColor}`}>
+                
+                {/* IMAGE CONTAINER */}
                 <div className="relative aspect-square">
-                  <img 
+                  <Image 
                     src={panda.image} 
                     alt={panda.name} 
-                    loading="lazy"
-                    className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105" 
+                    fill
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    className="object-cover transition-transform duration-700 group-hover:scale-110" 
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-gray-950 via-transparent to-transparent opacity-80" />
+                  {/* Dark Gradient Overlay for text readability */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#141416] via-transparent to-transparent opacity-90" />
                   
-                  <div className="absolute top-8 right-8 bg-black/80 backdrop-blur-xl px-5 py-2.5 rounded-2xl border border-white/10 shadow-xl">
-                    <p className={`text-[10px] font-black uppercase tracking-widest ${panda.color}`}>
-                        {panda.isLoading ? <span className="animate-pulse">...</span> : panda.levelLabel}
+                  {/* STATUS BADGE */}
+                  <div className="absolute top-6 right-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 shadow-lg">
+                    <p className={`text-[9px] font-black uppercase tracking-widest ${panda.colorClass}`}>
+                        {panda.isLoading ? <span className="animate-pulse">Syncing...</span> : panda.levelLabel}
                     </p>
                   </div>
                 </div>
 
-                <div className="p-8 -mt-16 relative z-10">
-                  <h3 className="text-2xl font-black uppercase mb-6 tracking-tight text-white/90">{panda.name}</h3>
-                  <div className="bg-black/80 p-6 rounded-[2rem] border border-white/10 space-y-5 backdrop-blur-2xl shadow-inner">
+                {/* CONTENT CARD */}
+                <div className="p-8 -mt-20 relative z-10">
+                  <h3 className="text-xl font-black uppercase mb-6 tracking-wide text-white drop-shadow-md truncate">{panda.name}</h3>
+                  
+                  <div className="bg-[#0a0a0b]/80 p-6 rounded-[2rem] border border-white/5 space-y-5 backdrop-blur-md shadow-inner">
                     <div className="flex justify-between items-end">
                       <div className="space-y-1">
-                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.15em] block">Love Level</span>
-                        <span className="text-4xl font-black text-white tracking-tighter">
-                          {panda.isLoading ? <span className="text-gray-600 text-2xl">Syncing...</span> : panda.loveLevel}
-                          <span className="text-base text-pink-500/40 ml-2 font-black italic">/ 111</span>
+                        <span className="text-[9px] font-black text-gray-500 uppercase tracking-[0.2em] block">Love Level</span>
+                        <span className="text-3xl font-black text-white tracking-tighter">
+                          {panda.isLoading ? <span className="text-gray-600 text-xl">...</span> : panda.loveLevel}
+                          <span className="text-sm text-gray-600 ml-1 font-bold">/ 111</span>
                         </span>
                       </div>
                       <div className="text-right">
-                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.15em] block">Days Held</span>
-                        <span className="text-xl font-black text-gray-300 tracking-tighter">
-                            {panda.isLoading ? '-' : panda.daysHeld}
+                        <span className="text-[9px] font-black text-gray-500 uppercase tracking-[0.2em] block">Held</span>
+                        <span className="text-lg font-black text-[#c5a059] tracking-tighter">
+                            {panda.isLoading ? '-' : `${panda.daysHeld}d`}
                         </span>
                       </div>
                     </div>
                     
-                    <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden p-[2px] border border-white/5">
+                    {/* NOBLE GOLD PROGRESS BAR */}
+                    <div className="h-2 w-full bg-[#1a1a1c] rounded-full overflow-hidden p-[1px] border border-white/5">
                       <div 
-                        className="h-full bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 transition-all duration-1000 rounded-full" 
+                        className="h-full bg-gradient-to-r from-[#927035] via-[#c5a059] to-white transition-all duration-1000 rounded-full shadow-[0_0_10px_rgba(197,160,89,0.5)]" 
                         style={{ width: `${(panda.loveLevel / 111) * 100}%` }}
                       />
                     </div>

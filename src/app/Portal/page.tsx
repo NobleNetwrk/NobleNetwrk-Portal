@@ -38,8 +38,10 @@ export default function Portal() {
   const [showWalletList, setShowWalletList] = useState(false)
   const [isSettingPrimary, setIsSettingPrimary] = useState(false)
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
+
+  const [username, setUsername] = useState<string>("")
+  const [isSavingName, setIsSavingName] = useState(false)
   
-  // --- HOOKS ---
   const { holdings: walletData, loading: holdingsLoading, refetch } = useAssetHoldings(linkedWallets)
   
   const { 
@@ -177,6 +179,19 @@ export default function Portal() {
   }, [publicKey])
 
   useEffect(() => {
+    if (publicKey) {
+      fetch(`/api/user/profile?wallet=${publicKey.toBase58()}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.user?.username) {
+            setUsername(data.user.username);
+          }
+        })
+        .catch(e => console.error("Profile sync error", e));
+    }
+  }, [publicKey]);
+
+  useEffect(() => {
     if (!isMounted) return
     const fetchPrices = async () => {
       try {
@@ -197,7 +212,32 @@ export default function Portal() {
 
   const groupedAssets = getBreakdown();
 
-  // --- ACTIONS ---
+  const handleSaveUsername = async () => {
+    if (!userId) return toast.error("Please login first");
+    if (!username || username.length < 3) return toast.error("Username must be at least 3 characters");
+
+    setIsSavingName(true);
+    try {
+        const res = await fetch('/api/user/username', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, username })
+        });
+        
+        const data = await res.json();
+
+        if (res.ok) {
+            toast.success("Identity updated successfully!");
+        } else {
+            toast.error(data.error || "Failed to update username");
+        }
+    } catch (e) {
+        toast.error("Network error");
+    } finally {
+        setIsSavingName(false);
+    }
+  };
+
   const handleLinkWallet = async () => {
     if (!publicKey || !signMessage || !userId) return toast.error("Please login first.")
     setIsLinking(true)
@@ -273,31 +313,31 @@ export default function Portal() {
     } catch (err) { console.error(err); toast.error('Failed to unlink') } finally { setIsUnlinking(false) }
   };
 
-  if (!isMounted) return <div className="min-h-screen bg-gray-950 flex items-center justify-center"><LoadingSpinner size="lg"/></div>;
+  if (!isMounted) return <div className="min-h-screen bg-[#0a0a0b] flex items-center justify-center"><LoadingSpinner size="lg"/></div>;
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-4 md:p-8">
+    <main className="min-h-screen bg-transparent text-white p-4 md:p-8">
       {/* HODL MODAL */}
       {showHodlBreakdown && hodlData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-            <div className="bg-gray-900 border border-white/10 rounded-3xl w-full max-w-3xl max-h-[85vh] flex flex-col shadow-2xl">
-                <div className="p-6 border-b border-white/10 flex justify-between items-center bg-gray-900 rounded-t-3xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-[#141416] border border-[#c5a059]/30 rounded-3xl w-full max-w-3xl max-h-[85vh] flex flex-col shadow-2xl">
+                <div className="p-6 border-b border-[#c5a059]/10 flex justify-between items-center bg-[#0a0a0b] rounded-t-3xl">
                     <div>
-                        <h2 className="text-xl font-black uppercase tracking-tighter">HODL Breakdown</h2>
+                        <h2 className="text-xl font-black uppercase tracking-tighter text-[#c5a059]">HODL Breakdown</h2>
                         <p className="text-xs text-gray-500 font-bold uppercase">Total Score: {hodlData.totalScore.toLocaleString()} Days</p>
                     </div>
-                    <button onClick={() => setShowHodlBreakdown(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">✕</button>
+                    <button onClick={() => setShowHodlBreakdown(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors text-gray-400 hover:text-white">✕</button>
                 </div>
                 <div className="p-6 overflow-y-auto space-y-4">
                     {/* Show refresh button if details are missing (fresh DB load) */}
                     {(!hodlData.details || hodlData.details.length === 0) && (
-                        <div className="text-center p-8 border border-dashed border-white/10 rounded-2xl">
+                        <div className="text-center p-8 border border-dashed border-[#c5a059]/20 rounded-2xl">
                             <p className="text-sm font-bold text-gray-400 mb-2">Score Loaded from Database</p>
                             <p className="text-xs text-gray-500 mb-4">Detailed breakdown not cached. Refresh to calculate live.</p>
                             <button 
                                 onClick={handleHodlRefresh}
                                 disabled={isRefreshingHodl}
-                                className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-xl text-xs font-black uppercase"
+                                className="bg-[#c5a059] hover:bg-[#927035] text-black px-4 py-2 rounded-xl text-xs font-black uppercase"
                             >
                                 {isRefreshingHodl ? 'Calculating...' : 'Calculate Live Breakdown'}
                             </button>
@@ -319,14 +359,14 @@ export default function Portal() {
                                     className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors"
                                 >
                                     <div className="flex items-center gap-4">
-                                        <Image src={config.icon} alt={config.label} width={32} height={32} className="rounded-lg" />
+                                        <Image src={config.icon} alt={config.label} width={32} height={32} className="rounded-lg grayscale-[0.3]" />
                                         <div className="text-left">
-                                            <h3 className="text-sm font-bold uppercase">{config.label}</h3>
+                                            <h3 className="text-sm font-bold uppercase text-gray-200">{config.label}</h3>
                                             <p className="text-[10px] text-gray-500 font-mono">{items.length} Assets</p>
                                         </div>
                                     </div>
                                     <div className="text-right">
-                                        <p className="text-sm font-black text-purple-400">{sectionScore.toLocaleString()} pts</p>
+                                        <p className="text-sm font-black text-[#c5a059]">{sectionScore.toLocaleString()} pts</p>
                                         <p className="text-[10px] text-gray-600 uppercase font-bold">{isExpanded ? 'Collapse' : 'Expand'}</p>
                                     </div>
                                 </button>
@@ -339,7 +379,7 @@ export default function Portal() {
                                                 </div>
                                                 <div className="min-w-0">
                                                     <p className="text-xs font-bold truncate text-gray-300">{asset.name}</p>
-                                                    <p className="text-[10px] text-gray-500 font-mono">Held: <span className="text-green-400 font-bold">{asset.daysHeld}d</span></p>
+                                                    <p className="text-[10px] text-gray-500 font-mono">Held: <span className="text-[#c5a059] font-bold">{asset.daysHeld}d</span></p>
                                                 </div>
                                             </div>
                                         ))}
@@ -357,12 +397,12 @@ export default function Portal() {
       <div className="max-w-7xl mx-auto">
         <header className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-6">
           <div className="flex items-center gap-4">
-            <Image src="/ntwrk-logo.png" alt="Logo" width={64} height={64} className="rounded-full border-2 border-blue-500 shadow-lg" />
+            <Image src="/ntwrk-logo.png" alt="Logo" width={64} height={64} className="rounded-full border-2 border-[#c5a059] shadow-[0_0_15px_rgba(197,160,89,0.2)]" />
             <div>
-              <h1 className="text-3xl font-black uppercase tracking-tighter">NobleNetwrk Portal</h1>
+              <h1 className="text-3xl font-black uppercase tracking-tighter text-white">Noble<span className="text-[#c5a059]">Netwrk</span> Portal</h1>
               <div className="flex items-center gap-2">
-                <span className="text-gray-500 text-[10px] font-bold uppercase tracking-widest bg-gray-900 px-2 py-1 rounded">{linkedWallets.length} Linked Wallets</span>
-                <button onClick={() => setShowWalletList(!showWalletList)} className="text-[10px] text-blue-400 hover:text-blue-300 underline font-bold uppercase">{showWalletList ? 'Hide List' : 'View List'}</button>
+                <span className="text-gray-500 text-[10px] font-bold uppercase tracking-widest bg-[#141416] px-2 py-1 rounded border border-white/5">{linkedWallets.length} Linked Wallets</span>
+                <button onClick={() => setShowWalletList(!showWalletList)} className="text-[10px] text-[#c5a059] hover:text-[#e4c98c] underline font-bold uppercase decoration-[#c5a059]/50">{showWalletList ? 'Hide List' : 'View List'}</button>
               </div>
             </div>
           </div>
@@ -374,28 +414,26 @@ export default function Portal() {
             {/* MAIN AIRDROP BUTTON (Primary CTA) */}
             <button 
                 onClick={() => router.push('/Airdrop')} 
-                className=" bg-green-900/30 border border-green-500/30 hover:bg-green-500 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-green-900/20 flex items-center gap-2"
+                className="bg-gradient-to-r from-[#c5a059] to-[#927035] hover:brightness-110 text-black px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-[#c5a059]/20 flex items-center gap-2"
             >
                 $NTWRK Airdrop
             </button>
 
             {/* TOOLS DROPDOWN MENU */}
             <div className="relative group">
-                <button className="bg-gray-800 hover:bg-gray-700 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2">
+                <button className="bg-[#141416] hover:bg-[#1f1f22] border border-white/5 text-gray-300 px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2">
                     Tools
-                    <svg className="w-3 h-3 group-hover:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                    <svg className="w-3 h-3 group-hover:rotate-180 transition-transform text-[#c5a059]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                 </button>
-                {/* Fixed: Use pt-4 padding to bridge the gap instead of margin */}
                 <div className="absolute top-full right-0 pt-4 w-48 hidden group-hover:block z-50">
-                    <div className="bg-gray-900 border border-white/10 rounded-xl shadow-xl overflow-hidden">
-                        <button onClick={() => router.push('/PandaLoveLevel')} className="w-full text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-300 hover:bg-white/5 hover:text-emerald-400 transition-colors border-b border-white/5">
+                    <div className="bg-[#141416] border border-[#c5a059]/20 rounded-xl shadow-2xl overflow-hidden">
+                        <button onClick={() => router.push('/PandaLoveLevel')} className="w-full text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:bg-[#c5a059]/10 hover:text-[#c5a059] transition-colors border-b border-white/5">
                             Panda Love Level
                         </button>
-                        <button onClick={() => router.push('/K9Impound')} className="w-full text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-300 hover:bg-white/5 hover:text-blue-400 transition-colors border-b border-white/5">
+                        <button onClick={() => router.push('/K9Impound')} className="w-full text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:bg-[#c5a059]/10 hover:text-[#c5a059] transition-colors border-b border-white/5">
                             K9 Impound
                         </button>
-                        {/* Airdrop also listed here for convenience */}
-                        <button onClick={() => router.push('/AirdropTool')} className="w-full text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-300 hover:bg-white/5 hover:text-indigo-400 transition-colors">
+                        <button onClick={() => router.push('/AirdropTool')} className="w-full text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:bg-[#c5a059]/10 hover:text-[#c5a059] transition-colors">
                             Airdrop Tool
                         </button>
                     </div>
@@ -403,31 +441,55 @@ export default function Portal() {
             </div>
             
             {needsLinking ? (
-              <button onClick={handleLinkWallet} disabled={isLinking} className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest animate-pulse shadow-lg shadow-yellow-500/20">{isLinking ? 'Linking...' : '+ Link This Wallet'}</button>
+              <button onClick={handleLinkWallet} disabled={isLinking} className="bg-[#c5a059] hover:bg-[#e4c98c] text-black px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest animate-pulse shadow-lg shadow-[#c5a059]/20">{isLinking ? 'Linking...' : '+ Link This Wallet'}</button>
             ) : (
-              <div className="px-4 py-3 bg-green-900/30 border border-green-500/30 rounded-2xl"><span className="text-green-400 text-[10px] font-black uppercase tracking-widest">✓ Wallet Linked</span></div>
+              <div className="px-4 py-3 bg-[#141416] border border-[#c5a059]/30 rounded-2xl"><span className="text-[#c5a059] text-[10px] font-black uppercase tracking-widest">✓ Wallet Linked</span></div>
             )}
             
-            <button onClick={() => refetch()} disabled={holdingsLoading} className="p-3 bg-gray-900 rounded-2xl border border-white/5 hover:bg-gray-800 transition-colors">
-              <svg className={`w-5 h-5 text-gray-400 ${holdingsLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.836 3a8.001 8.001 0 00-15.836-3L4 12m14.004 6.183L18 9.227m-1.722-1.722A8.001 8.001 0 004 12m14.004 6.183L18 15.227" /></svg>
+            <button onClick={() => refetch()} disabled={holdingsLoading} className="p-3 bg-[#141416] rounded-2xl border border-white/5 hover:border-[#c5a059]/50 transition-colors">
+              <svg className={`w-5 h-5 text-gray-400 group-hover:text-[#c5a059] ${holdingsLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.836 3a8.001 8.001 0 00-15.836-3L4 12m14.004 6.183L18 9.227m-1.722-1.722A8.001 8.001 0 004 12m14.004 6.183L18 15.227" /></svg>
             </button>
-            <button onClick={() => { localStorage.clear(); disconnect(); router.push('/') }} className="bg-red-900/40 hover:bg-red-900/60 text-white px-4 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest border border-red-500/20">Logout</button>
+            <button onClick={() => { localStorage.clear(); disconnect(); router.push('/') }} className="bg-red-900/10 hover:bg-red-900/30 text-red-500 px-4 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest border border-red-500/10">Logout</button>
           </div>
         </header>
 
         {showWalletList && (
-          <div className="mb-8 bg-gray-900/60 border border-white/10 p-6 rounded-3xl animate-in fade-in slide-in-from-top-4">
-            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Linked Wallets & Management</h3>
+          <div className="mb-8 bg-[#141416]/80 backdrop-blur-md border border-[#c5a059]/20 p-6 rounded-3xl animate-in fade-in slide-in-from-top-4">
+            
+            {/* --- METAVERSE IDENTITY --- */}
+            <div className="mb-6 border-b border-white/5 pb-6">
+               <div className="flex justify-between items-center mb-3">
+                   <h3 className="text-xs font-bold text-[#c5a059] uppercase tracking-widest">Metaverse Identity</h3>
+                   <span className="text-[10px] text-gray-600 font-mono">Visible in Chat & Games</span>
+               </div>
+               <div className="flex gap-2">
+                   <input 
+                       value={username} 
+                       onChange={(e) => setUsername(e.target.value)} 
+                       placeholder="Enter a Username..." 
+                       className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-[#c5a059] flex-1 text-sm font-mono placeholder-gray-700 transition-colors"
+                   />
+                   <button 
+                       onClick={handleSaveUsername} 
+                       disabled={isSavingName || !username.trim()}
+                       className="bg-[#c5a059] hover:bg-[#e4c98c] text-black px-6 py-2 rounded-xl text-xs font-bold uppercase disabled:opacity-50 transition-all shadow-lg shadow-[#c5a059]/20"
+                   >
+                       {isSavingName ? 'Saving...' : 'Set Name'}
+                   </button>
+               </div>
+            </div>
+            
+            <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4">Linked Wallets & Management</h3>
             <div className="flex flex-col gap-2">
               {walletDetails.map((wallet, idx) => (
-                <div key={idx} className={`flex items-center justify-between p-3 rounded-xl border transition-colors ${wallet.isPrimary ? 'bg-blue-900/20 border-blue-500/50' : 'bg-black/40 border-white/5 hover:border-white/20'}`}>
+                <div key={idx} className={`flex items-center justify-between p-3 rounded-xl border transition-colors ${wallet.isPrimary ? 'bg-[#c5a059]/10 border-[#c5a059]/40' : 'bg-black/40 border-white/5 hover:border-white/20'}`}>
                   <div className="flex items-center gap-3">
                     <span className="font-mono text-sm text-gray-300">{wallet.address.slice(0,6)}...{wallet.address.slice(-6)}</span>
-                    {wallet.isPrimary && <span className="text-[9px] text-blue-100 bg-blue-600 px-2 py-1 rounded font-black tracking-wider shadow-lg shadow-blue-500/40">PRIMARY</span>}
+                    {wallet.isPrimary && <span className="text-[9px] text-black bg-[#c5a059] px-2 py-1 rounded font-black tracking-wider shadow-lg">PRIMARY</span>}
                   </div>
                   <div className="flex items-center gap-3">
                     {!wallet.isPrimary && (
-                      <button onClick={() => handleSetPrimary(wallet.address)} disabled={isSettingPrimary} className="text-[9px] font-bold text-blue-400 hover:text-white uppercase hover:underline">Make Primary</button>
+                      <button onClick={() => handleSetPrimary(wallet.address)} disabled={isSettingPrimary} className="text-[9px] font-bold text-[#c5a059] hover:text-white uppercase hover:underline">Make Primary</button>
                     )}
                     <button onClick={() => handleUnlinkWallet(wallet.address)} disabled={isUnlinking} className="text-red-500 hover:text-red-400 p-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                   </div>
@@ -440,47 +502,50 @@ export default function Portal() {
         {/* STATS & HODL SCORE ROW */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
           {/* SOL */}
-          <div className="bg-gray-900/40 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/5 flex flex-col justify-center shadow-2xl relative overflow-hidden group">
+          <div className="bg-[#141416] p-8 rounded-[2.5rem] border border-white/5 flex flex-col justify-center shadow-xl relative overflow-hidden group hover:border-[#c5a059]/20 transition-all">
             <div className="flex items-center gap-5 relative z-10">
-              <div className="w-14 h-14 bg-indigo-500/10 rounded-2xl flex items-center justify-center border border-indigo-500/20"><Image src="/solana-logo.png" alt="SOL" width={28} height={28} /></div>
+              <div className="w-14 h-14 bg-black rounded-2xl flex items-center justify-center border border-white/10"><Image src="/solana-logo.png" alt="SOL" width={28} height={28} /></div>
               <div>
                 <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">SOL Balance</p>
-                <h2 className="text-2xl font-black">{totals.sol.toFixed(4)}</h2>
+                <h2 className="text-2xl font-black text-white">{totals.sol.toFixed(4)}</h2>
               </div>
             </div>
-            <p className="text-lg font-bold text-indigo-400 mt-2 ml-[4.5rem]">${portfolioValue.solUsd}</p>
+            <p className="text-lg font-bold text-[#c5a059] mt-2 ml-[4.5rem]">${portfolioValue.solUsd}</p>
           </div>
 
           {/* NTWRK */}
-          <div className="bg-gray-900/40 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/5 flex flex-col justify-center shadow-2xl">
+          <div className="bg-[#141416] p-8 rounded-[2.5rem] border border-white/5 flex flex-col justify-center shadow-xl hover:border-[#c5a059]/20 transition-all">
             <div className="flex items-center gap-5">
-              <div className="w-14 h-14 bg-green-500/10 rounded-2xl flex items-center justify-center border border-green-500/20"><Image src="/ntwrk-logo.png" alt="NTWRK" width={28} height={28} /></div>
+              <div className="w-14 h-14 bg-black rounded-2xl flex items-center justify-center border border-white/10"><Image src="/ntwrk-logo.png" alt="NTWRK" width={28} height={28} /></div>
               <div>
                 <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">$NTWRK Balance</p>
-                <h2 className="text-2xl font-black">{totals.ntwrk.toLocaleString()}</h2>
+                <h2 className="text-2xl font-black text-white">{totals.ntwrk.toLocaleString()}</h2>
               </div>
             </div>
-            <p className="text-lg font-bold text-green-400 mt-2 ml-[4.5rem]">${portfolioValue.ntwrkUsd}</p>
+            <p className="text-lg font-bold text-[#c5a059] mt-2 ml-[4.5rem]">${portfolioValue.ntwrkUsd}</p>
           </div>
 
-          {/* HODL SCORE CARD (NEW) */}
-          <div className="bg-gradient-to-br from-gray-900 to-black p-8 rounded-[2.5rem] border border-white/10 flex flex-col justify-center relative overflow-hidden shadow-2xl group hover:border-purple-500/30 transition-all">
+          {/* HODL SCORE CARD (Premium Gold) */}
+          <div className="bg-gradient-to-br from-[#1a1a1c] to-[#0a0a0b] p-8 rounded-[2.5rem] border border-[#c5a059]/20 flex flex-col justify-center relative overflow-hidden shadow-2xl group hover:border-[#c5a059]/50 transition-all">
+             {/* Subtle ambient glow behind */}
+             <div className="absolute top-0 right-0 w-32 h-32 bg-[#c5a059]/10 blur-[50px] rounded-full pointer-events-none" />
+             
              <div className="relative z-10 flex items-center gap-5">
-                <div className="w-14 h-14 bg-purple-500/10 rounded-2xl flex items-center justify-center border border-purple-500/20">
-                    <svg className="w-7 h-7 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <div className="w-14 h-14 bg-[#c5a059]/10 rounded-2xl flex items-center justify-center border border-[#c5a059]/30">
+                    <svg className="w-7 h-7 text-[#c5a059]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 </div>
                 <div>
                     <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">My HODL Score</p>
-                    {/* Updated Logic: Show saved score if loaded, else button */}
                     {initialHodlLoading ? (
                         <span className="text-xs text-gray-500 animate-pulse">Syncing...</span>
                     ) : (hodlData?.totalScore !== undefined && hodlData.totalScore > 0) ? (
                         <div>
-                            <h2 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 animate-in fade-in">{hodlData.totalScore.toLocaleString()}</h2>
+                            {/* Gold Gradient Text */}
+                            <h2 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#c5a059] to-[#f3eacb] animate-in fade-in">{hodlData.totalScore.toLocaleString()}</h2>
                             <button 
                                 onClick={handleHodlRefresh} 
-                                disabled={isRefreshingHodl} // <--- FIXED: using isRefreshingHodl
-                                className="text-[9px] font-bold text-gray-600 hover:text-purple-400 uppercase tracking-wider mt-1 flex items-center gap-1"
+                                disabled={isRefreshingHodl} 
+                                className="text-[9px] font-bold text-gray-600 hover:text-[#c5a059] uppercase tracking-wider mt-1 flex items-center gap-1"
                             >
                                 {isRefreshingHodl ? 'Refreshing...' : '↻ Refresh Score'}
                             </button>
@@ -488,8 +553,8 @@ export default function Portal() {
                     ) : (
                         <button 
                             onClick={handleHodlRefresh} 
-                            disabled={isRefreshingHodl} // <--- FIXED: using isRefreshingHodl
-                            className="text-xs font-black uppercase tracking-widest text-purple-400 hover:text-white transition-colors"
+                            disabled={isRefreshingHodl} 
+                            className="text-xs font-black uppercase tracking-widest text-[#c5a059] hover:text-white transition-colors"
                         >
                             {isRefreshingHodl ? 'Calculating...' : 'Calculate Score'}
                         </button>
@@ -499,7 +564,7 @@ export default function Portal() {
              {hodlData && (
                  <button 
                     onClick={() => setShowHodlBreakdown(true)}
-                    className="mt-4 ml-[4.5rem] text-[10px] font-bold text-gray-500 hover:text-white uppercase tracking-widest underline decoration-2 underline-offset-4"
+                    className="mt-4 ml-[4.5rem] text-[10px] font-bold text-gray-500 hover:text-white uppercase tracking-widest underline decoration-2 underline-offset-4 decoration-[#c5a059]/30 hover:decoration-[#c5a059]"
                  >
                     View Breakdown
                  </button>
@@ -509,8 +574,8 @@ export default function Portal() {
 
         {/* ASSET TILES */}
         <div className="mb-6 flex justify-between items-end">
-          <h2 className="text-xl font-black uppercase tracking-tighter">Verified Assets</h2>
-          <p className="text-[10px] font-bold text-gray-600 uppercase">Synced across {linkedWallets.length} wallets</p>
+          <h2 className="text-xl font-black uppercase tracking-tighter text-white">Verified Assets</h2>
+          <p className="text-[10px] font-bold text-gray-500 uppercase">Synced across {linkedWallets.length} wallets</p>
         </div>
 
         {holdingsLoading && (!walletData || walletData.length === 0) ? (
@@ -520,30 +585,30 @@ export default function Portal() {
             {assetConfig.map((config) => {
               const count = totals[config.key as keyof typeof totals] || 0;
               return (
-                <div key={config.key} className="bg-gray-900/40 backdrop-blur-md p-6 rounded-3xl border border-white/5 transition-all group hover:scale-[1.02] shadow-lg flex items-center gap-6">
+                <div key={config.key} className="bg-[#141416] p-6 rounded-3xl border border-white/5 transition-all group hover:scale-[1.02] shadow-lg flex items-center gap-6 hover:border-[#c5a059]/20 hover:shadow-[#c5a059]/5">
                   <div className="relative w-20 h-20 flex-shrink-0">
                     <Image 
                         src={config.icon} 
                         alt={config.label} 
                         fill 
-                        className="rounded-2xl object-cover border border-white/5 shadow-lg group-hover:shadow-purple-500/20 transition-all"
+                        className="rounded-2xl object-cover border border-white/5 shadow-lg grayscale-[0.2] group-hover:grayscale-0 transition-all"
                     />
                   </div>
                   
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-xs font-black uppercase tracking-wide text-gray-400 mb-1 truncate">{config.label}</h3>
+                    <h3 className="text-xs font-black uppercase tracking-wide text-gray-500 mb-1 truncate group-hover:text-gray-300 transition-colors">{config.label}</h3>
                     <div className="flex items-end justify-between">
                         <span className="text-4xl font-black text-white leading-none">{count}</span>
                         {config.action && count > 0 && (
-                            <button onClick={() => router.push(`/${config.action}`)} className={`text-[10px] font-black text-${config.color}-400 hover:text-${config.color}-300 uppercase tracking-widest underline decoration-2 underline-offset-4 transition-all mb-1`}>
+                            <button onClick={() => router.push(`/${config.action}`)} className="text-[10px] font-black text-[#c5a059] hover:text-[#e4c98c] uppercase tracking-widest underline decoration-2 underline-offset-4 transition-all mb-1">
                                 {config.actionLabel}
                             </button>
                         )}
                     </div>
-                    {/* CUSTOM LOGIC FOR GALACTIC GECKOS: Show Immortal Count Below */}
+                    {/* CUSTOM LOGIC FOR GALACTIC GECKOS */}
                     {config.key === 'galacticGeckos' && (
-                        <p className="text-[10px] font-bold text-gray-500 uppercase mt-1">
-                            Immortal Geckos: <span className="text-cyan-400">{totals.immortalGeckos}</span>
+                        <p className="text-[10px] font-bold text-gray-600 uppercase mt-1">
+                            Immortal Geckos: <span className="text-gray-300">{totals.immortalGeckos}</span>
                         </p>
                     )}
                   </div>

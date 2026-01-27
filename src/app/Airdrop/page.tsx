@@ -216,81 +216,122 @@ export default function AirdropPage() {
     }
   }, [connected, publicKey, fetchUserProfile]);
 
-  if (!connected) return <div className="min-h-screen flex items-center justify-center bg-gray-950"><LoadingSpinner size="lg" /></div>
+  if (!connected) return <div className="min-h-screen flex items-center justify-center bg-[#0a0a0b]"><LoadingSpinner size="lg" /></div>
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-4 md:p-8">
-      <div className="max-w-6xl mx-auto">
-        <header className="flex justify-between items-center mb-12 gap-4">
+    <main className="min-h-screen bg-[#0a0a0b] text-white p-4 md:p-8 relative overflow-hidden">
+      {/* Background Ambient Glow */}
+      <div className="fixed top-0 left-[20%] w-[600px] h-[600px] bg-[#c5a059]/5 rounded-full blur-[120px] pointer-events-none" />
+
+      <div className="max-w-6xl mx-auto relative z-10">
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
           <div className="flex items-center gap-4">
-            <Image src="/ntwrk-logo.png" alt="Logo" width={48} height={48} className="rounded-full border border-blue-500/50 shadow-lg shadow-blue-500/20" />
-            <h1 className="text-2xl font-black uppercase tracking-tighter">$NTWRK ALLOCATION</h1>
+             <div className="relative w-12 h-12 flex-shrink-0">
+                <Image 
+                    src="/ntwrk-logo.png" 
+                    alt="Logo" 
+                    fill 
+                    className="rounded-full border-2 border-[#c5a059] shadow-[0_0_15px_rgba(197,160,89,0.3)] object-cover" 
+                />
+             </div>
+            <div>
+              <h1 className="text-3xl font-black uppercase tracking-tighter text-white">
+                $NTWRK <span className="text-[#c5a059]">Allocation</span>
+              </h1>
+              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Airdrop & Rewards Center</p>
+            </div>
           </div>
-          <button onClick={() => router.push('/Portal')} className="bg-gray-900 border border-white/5 hover:bg-gray-800 text-gray-400 px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all">
+          <button 
+            onClick={() => router.push('/Portal')} 
+            className="bg-[#141416] border border-white/5 hover:border-[#c5a059]/50 text-gray-400 hover:text-[#c5a059] px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all"
+          >
             Back to Portal
           </button>
         </header>
 
+        {/* VERIFICATION ALERT (Gold Vault Style) */}
         {!isVerified && (
-          <div className="mb-8 p-6 bg-yellow-500/10 border border-yellow-500/20 rounded-3xl flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-4 text-yellow-500">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-              <p className="font-bold text-sm">Wallet verification required to participate in the airdrop.</p>
+          <div className="mb-8 p-1 rounded-3xl bg-gradient-to-r from-[#927035] via-[#c5a059] to-[#927035]">
+            <div className="bg-[#0a0a0b] rounded-[1.3rem] p-6 flex flex-col md:flex-row justify-between items-center gap-4">
+                <div className="flex items-center gap-4 text-[#c5a059]">
+                <svg className="w-8 h-8 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                <div>
+                    <h3 className="font-black uppercase tracking-widest text-xs mb-1">Security Access Required</h3>
+                    <p className="text-gray-400 text-xs font-medium">Verify your wallet signature to access the Airdrop Vault.</p>
+                </div>
+                </div>
+                <button 
+                    onClick={verifyWallet} 
+                    disabled={isVerifying} 
+                    className="bg-[#c5a059] hover:bg-[#e4c98c] text-black px-8 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-[#c5a059]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                {isVerifying ? 'Verifying Identity...' : 'Verify Wallet Access'}
+                </button>
             </div>
-            <button onClick={verifyWallet} disabled={isVerifying} className="bg-yellow-500 text-black px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-yellow-400 transition-all disabled:opacity-50">
-              {isVerifying ? 'Verifying...' : 'Verify Wallet'}
-            </button>
           </div>
         )}
 
+        {/* STATS GRID */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
           {/* Global Progress */}
-          <div className="bg-gray-900/40 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/5 shadow-xl">
-            <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Global Progress</p>
-            <p className="text-3xl font-black text-blue-500">{((airdropProgress / TOTAL_AIRDROP) * 100).toFixed(2)}%</p>
-            <div className="w-full bg-gray-800 h-1.5 rounded-full mt-4 overflow-hidden"><div className="bg-blue-500 h-full shadow-[0_0_10px_rgba(59,130,246,0.8)]" style={{ width: `${(airdropProgress / TOTAL_AIRDROP) * 100}%` }} /></div>
+          <div className="bg-[#141416] p-8 rounded-[2.5rem] border border-white/5 shadow-xl hover:border-[#c5a059]/30 transition-all group">
+            <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Global Progress</p>
+            <p className="text-3xl font-black text-white group-hover:text-[#c5a059] transition-colors">{((airdropProgress / TOTAL_AIRDROP) * 100).toFixed(2)}%</p>
+            {/* Gold Progress Bar */}
+            <div className="w-full bg-[#0a0a0b] border border-white/5 h-2 rounded-full mt-4 overflow-hidden">
+                <div 
+                    className="h-full bg-gradient-to-r from-[#927035] via-[#c5a059] to-[#f3eacb] shadow-[0_0_15px_rgba(197,160,89,0.5)]" 
+                    style={{ width: `${(airdropProgress / TOTAL_AIRDROP) * 100}%` }} 
+                />
+            </div>
           </div>
 
           {/* Weekly Potential */}
-          <div className="bg-gray-900/40 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/5 shadow-xl text-center">
-            <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Weekly Potential</p>
-            <p className="text-3xl font-black text-green-500">
+          <div className="bg-[#141416] p-8 rounded-[2.5rem] border border-white/5 shadow-xl text-center hover:border-[#c5a059]/30 transition-all group">
+            <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Weekly Potential</p>
+            <p className="text-3xl font-black text-[#c5a059]">
                 {assetsLoading ? <span className="animate-pulse">...</span> : displayWeeklyAllocation.toFixed(2)} 
-                <span className="text-xs ml-1">NTWRK</span>
+                <span className="text-xs ml-1 text-gray-400">NTWRK</span>
             </p>
-            <p className="text-[10px] text-gray-600 mt-2 font-bold uppercase">{totalBoost.toFixed(1)}x Total Boost</p>
+            <p className="text-[10px] text-gray-400 mt-2 font-bold uppercase bg-white/5 inline-block px-3 py-1 rounded-lg border border-white/5 group-hover:border-[#c5a059]/30 group-hover:text-[#c5a059] transition-all">
+                {totalBoost.toFixed(1)}x Total Boost
+            </p>
           </div>
 
           {/* Total Secured */}
-          <div className="bg-gray-900/40 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/5 shadow-xl text-right">
-            <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Total Secured</p>
-            <div className="flex justify-end items-center gap-2">
+          <div className="bg-gradient-to-br from-[#1a1a1c] to-[#0a0a0b] p-8 rounded-[2.5rem] border border-[#c5a059]/20 shadow-xl text-right relative overflow-hidden group">
+             <div className="absolute top-0 right-0 w-32 h-32 bg-[#c5a059]/10 blur-[40px] rounded-full pointer-events-none" />
+             
+            <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Total Secured</p>
+            <div className="flex justify-end items-center gap-2 relative z-10">
               {profileLoading && isVerified ? (
-                <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-5 h-5 border-2 border-[#c5a059] border-t-transparent rounded-full animate-spin"></div>
               ) : (
-                <p className="text-3xl font-black text-purple-500">{userTotalAllocation.toFixed(2)}</p>
+                <p className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-[#c5a059] to-[#927035]">{userTotalAllocation.toFixed(2)}</p>
               )}
-              <span className="text-xs text-purple-400 font-bold self-end mb-1">NTWRK</span>
+              <span className="text-xs text-[#c5a059]/50 font-black self-end mb-1">NTWRK</span>
             </div>
-            <p className="text-[10px] text-gray-600 mt-2 font-bold uppercase tracking-tight">Across All Seasons</p>
+            <p className="text-[9px] text-gray-600 mt-2 font-bold uppercase tracking-widest">Across All Seasons</p>
           </div>
         </div>
 
-        {/* Boost Table */}
-        <section className="bg-gray-900/40 backdrop-blur-md p-8 rounded-[2.5rem] border border-white/5 mb-12 overflow-hidden">
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-xl font-black uppercase tracking-tighter">Boost Factors</h2>
-            {assetsLoading && <span className="text-xs text-blue-400 animate-pulse font-mono">SYNCING ASSETS...</span>}
+        {/* Boost Table (Premium Table Styles) */}
+        <section className="bg-[#141416] p-8 rounded-[2.5rem] border border-white/5 mb-12 overflow-hidden shadow-2xl">
+          <div className="flex justify-between items-center mb-8 border-b border-white/5 pb-4">
+            <h2 className="text-xl font-black uppercase tracking-tighter text-white">
+                <span className="text-[#c5a059]">Boost</span> Factors
+            </h2>
+            {assetsLoading && <span className="text-[10px] text-[#c5a059] animate-pulse font-black uppercase tracking-widest">SYNCING ASSETS...</span>}
           </div>
           
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="border-b border-white/5 text-[10px] font-black text-gray-500 uppercase tracking-widest">
-                  <th className="pb-4">Collection</th>
+                <tr className="text-[9px] font-black text-gray-500 uppercase tracking-[0.2em]">
+                  <th className="pb-4 pl-4">Collection</th>
                   <th className="pb-4">Holdings</th>
                   <th className="pb-4">Multiplier</th>
-                  <th className="pb-4 text-right">Boost Contribution</th>
+                  <th className="pb-4 text-right pr-4">Contribution</th>
                 </tr>
               </thead>
               <tbody className="text-sm font-medium">
@@ -309,43 +350,59 @@ export default function AirdropPage() {
                   { label: 'Player 1', val: holdings.player1, mult: BOOSTS.player1 },
                   { label: 'NTWRK Staking', val: `${holdings.ntwrkBalance.toLocaleString()} NTWRK`, mult: '1x per 500k', final: ntwrkBoostTiers * BOOSTS.ntwrk }
                 ].map((row, i) => (
-                  <tr key={i} className="border-b border-white/5 last:border-0">
-                    <td className="py-4 text-gray-300">{row.label}</td>
-                    <td className="py-4 font-black">{typeof row.val === 'string' ? row.val : row.val}</td>
-                    <td className="py-4 text-xs text-gray-500">{typeof row.mult === 'number' ? `+${row.mult}x` : row.mult}</td>
-                    <td className="py-4 text-right font-black text-green-500">+{row.final ?? (Number(row.val) * (row.mult as number)).toFixed(1)}x</td>
+                  <tr key={i} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors group">
+                    <td className="py-4 pl-4 text-gray-400 group-hover:text-white font-bold">{row.label}</td>
+                    <td className="py-4 font-mono text-gray-500 group-hover:text-gray-300">{typeof row.val === 'string' ? row.val : row.val}</td>
+                    <td className="py-4 text-xs font-black text-[#c5a059]/70 group-hover:text-[#c5a059]">{typeof row.mult === 'number' ? `+${row.mult}x` : row.mult}</td>
+                    <td className="py-4 pr-4 text-right font-black text-gray-300 group-hover:text-[#c5a059]">+{row.final ?? (Number(row.val) * (row.mult as number)).toFixed(1)}x</td>
                   </tr>
                 ))}
-                <tr className="bg-white/5">
-                  <td colSpan={3} className="py-6 px-4 font-black uppercase tracking-widest text-xs">Total Boost Multiplier</td>
-                  <td className="py-6 px-4 text-right font-black text-green-400 text-xl">{totalBoost.toFixed(1)}x</td>
+                <tr className="bg-[#c5a059]/10 border-t border-[#c5a059]/20">
+                  <td colSpan={3} className="py-6 px-6 font-black uppercase tracking-widest text-xs text-[#c5a059]">Total Boost Multiplier</td>
+                  <td className="py-6 px-6 text-right font-black text-white text-xl">{totalBoost.toFixed(1)}x</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </section>
 
-        <section className="max-w-2xl mx-auto bg-gray-900/40 backdrop-blur-md p-10 rounded-[3rem] border border-white/5 text-center shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent" />
-          <h2 className="text-2xl font-black uppercase tracking-tighter mb-4">Secure Weekly Allocation</h2>
-          <p className="text-gray-500 text-sm mb-8 leading-relaxed">Check in once every 7 days to claim your share of the weekly pool.</p>
+        {/* CLAIM SECTION (The "Vault Door") */}
+        <section className="max-w-2xl mx-auto bg-[#141416] p-1 rounded-[3rem] shadow-2xl relative overflow-hidden group">
+          {/* Animated Gold Border Gradient */}
+          <div className="absolute inset-0 bg-gradient-to-br from-[#927035] via-[#c5a059] to-[#0a0a0b] opacity-20 group-hover:opacity-40 transition-opacity" />
           
-          <div className="bg-gray-950/50 p-6 rounded-3xl border border-white/5 mb-8 inline-block w-full max-w-sm">
-            <p className="text-[10px] font-black text-gray-500 uppercase mb-2">Current Calculation</p>
-            <p className="font-mono text-xs text-blue-400">({totalBoost.toFixed(1)}x Boost / 100) × {WEEKLY_ALLOCATION} NTWRK</p>
-          </div>
+          <div className="bg-[#0a0a0b] rounded-[2.9rem] p-10 text-center relative z-10 border border-white/5 h-full">
+            <h2 className="text-2xl font-black uppercase tracking-tighter mb-4 text-white">
+                Secure Weekly <span className="text-[#c5a059]">Allocation</span>
+            </h2>
+            <p className="text-gray-500 text-sm mb-8 leading-relaxed font-medium">
+                Check in once every 7 days to claim your share of the weekly pool.
+            </p>
+            
+            <div className="bg-[#141416] p-6 rounded-3xl border border-white/5 mb-8 inline-block w-full max-w-sm">
+                <p className="text-[9px] font-black text-gray-600 uppercase mb-2 tracking-widest">Current Calculation</p>
+                <p className="font-mono text-xs text-[#c5a059]">
+                    ({totalBoost.toFixed(1)}x Boost / 100) × {WEEKLY_ALLOCATION.toLocaleString()} NTWRK
+                </p>
+            </div>
 
-          <button 
-            onClick={handleCheckIn}
-            disabled={!canCheckIn || profileLoading || !isVerified || displayWeeklyAllocation <= 0}
-            className={`w-full py-6 rounded-[2rem] font-black uppercase tracking-widest text-xs transition-all shadow-xl active:scale-[0.98] ${canCheckIn && isVerified && displayWeeklyAllocation > 0 ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-900/40' : 'bg-gray-800 text-gray-600 cursor-not-allowed grayscale'}`}
-          >
-            {isVerified ? (
-              canCheckIn ? (
-                displayWeeklyAllocation > 0 ? `Secure ${displayWeeklyAllocation.toFixed(2)} NTWRK` : 'No Allocation Available'
-              ) : `Next Claim in ${(7 - Math.ceil(Math.abs(Date.now() - (lastCheckIn?.getTime() || 0)) / (1000 * 60 * 60 * 24)))} Days`
-            ) : 'Verification Required'}
-          </button>
+            <button 
+                onClick={handleCheckIn}
+                disabled={!canCheckIn || profileLoading || !isVerified || displayWeeklyAllocation <= 0}
+                className={`w-full py-6 rounded-[2rem] font-black uppercase tracking-widest text-xs transition-all shadow-xl active:scale-[0.98]
+                    ${canCheckIn && isVerified && displayWeeklyAllocation > 0 
+                        ? 'bg-gradient-to-r from-[#c5a059] to-[#927035] text-black hover:brightness-110 shadow-[#c5a059]/20' 
+                        : 'bg-[#1a1a1c] text-gray-600 cursor-not-allowed border border-white/5'
+                    }
+                `}
+            >
+                {isVerified ? (
+                canCheckIn ? (
+                    displayWeeklyAllocation > 0 ? `Secure ${displayWeeklyAllocation.toFixed(2)} NTWRK` : 'No Allocation Available'
+                ) : `Next Claim in ${(7 - Math.ceil(Math.abs(Date.now() - (lastCheckIn?.getTime() || 0)) / (1000 * 60 * 60 * 24)))} Days`
+                ) : 'Identity Verification Required'}
+            </button>
+          </div>
         </section>
       </div>
     </main>

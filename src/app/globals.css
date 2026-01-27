@@ -4,68 +4,110 @@
 @tailwind utilities;
 
 :root {
-  --blue-primary: #3b82f6;
-  --bg-dark: #030712;
+  /* The Noble Palette */
+  --noble-gold: #c5a059;
+  --noble-gold-dark: #927035;
+  --noble-black: #0a0a0b; 
+  --noble-gray: #1a1a1c;
 }
 
 body {
-  background-color: var(--bg-dark);
-  color: #f9fafb;
+  background-color: var(--noble-black);
+  color: #ffffff;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
 
-/* Glassmorphism Effect */
+/* Glassmorphism Effect - Updated for darker contrast */
 .glass {
-  background: rgba(17, 24, 39, 0.4);
+  background: rgba(10, 10, 11, 0.6);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* Solana Wallet Adapter Custom Styles */
+/* --- SOLANA WALLET ADAPTER OVERRIDES (GOLD THEME) --- */
+
+/* The main "Connect Wallet" button */
 .wallet-adapter-button {
-  @apply !bg-blue-600 !h-12 !px-8 !rounded-xl !font-black !text-sm !uppercase !tracking-widest !transition-all hover:!bg-blue-700 hover:!scale-105 active:!scale-95 !shadow-lg shadow-blue-500/20 !border-none;
+  background: linear-gradient(135deg, #c5a059 0%, #927035 100%) !important;
+  color: #000000 !important; /* Black text for contrast on gold */
+  height: 48px !important;
+  padding-left: 2rem !important;
+  padding-right: 2rem !important;
+  border-radius: 0.75rem !important; /* rounded-xl */
+  font-weight: 900 !important;
+  font-size: 0.875rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.1em !important;
+  transition: all 0.3s ease !important;
+  box-shadow: 0 10px 20px -5px rgba(197, 160, 89, 0.3) !important;
+  border: none !important;
 }
 
+.wallet-adapter-button:hover {
+  filter: brightness(1.15) !important;
+  transform: scale(1.02) !important;
+}
+
+.wallet-adapter-button:active {
+  transform: scale(0.98) !important;
+}
+
+/* The Modal (Pop-up when you click connect) */
 .wallet-adapter-modal-wrapper {
-  @apply !bg-gray-900 !rounded-[2.5rem] !border !border-gray-800 !p-8 !shadow-2xl;
+  background-color: #141416 !important; /* Slightly lighter black */
+  border-radius: 2.5rem !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  padding: 2rem !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
 }
 
 .wallet-adapter-modal-title {
-  @apply !text-white !font-black !text-2xl;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  font-size: 1.5rem !important;
+  letter-spacing: -0.02em !important;
 }
 
 .wallet-adapter-modal-list {
-  @apply !mb-0;
+  margin-bottom: 0 !important;
 }
 
+/* The individual wallet options inside the modal */
 .wallet-adapter-modal-list .wallet-adapter-button {
-  @apply !bg-gray-800 !mb-2 hover:!bg-gray-700 !shadow-none;
+  background: rgba(255, 255, 255, 0.05) !important;
+  margin-bottom: 0.75rem !important;
+  box-shadow: none !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  justify-content: flex-start !important; /* Align left */
 }
 
+.wallet-adapter-modal-list .wallet-adapter-button:hover {
+  background: rgba(197, 160, 89, 0.2) !important; /* Gold tint on hover */
+  border: 1px solid rgba(197, 160, 89, 0.5) !important;
+}
+
+/* Close button inside modal */
 .wallet-adapter-modal-button-close {
-  @apply !bg-gray-800 !rounded-full hover:!bg-gray-700;
+  background-color: rgba(255, 255, 255, 0.1) !important;
 }
 
-/* Loading animations */
-@keyframes spin-custom {
-  to { transform: rotate(360deg); }
-}
-
-.animate-spin-custom {
-  animation: spin-custom 0.8s linear infinite;
-}
-
-/* Custom Scrollbar */
+/* Custom Scrollbar - Gold Accent */
 ::-webkit-scrollbar {
   width: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-gray-950;
+  background: #0a0a0b;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-800 rounded-full hover:bg-gray-700;
+  background: #333;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #c5a059; /* Gold on hover */
 }

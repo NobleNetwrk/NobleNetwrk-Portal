@@ -17,6 +17,10 @@ model User {
   airdropProfile  AirdropProfile? 
   hodlScore       Int             @default(0)
   hodlLastUpdated DateTime?
+  unlockedAvatars String[]        @default(["alien"])
+  requests        AvatarRequest[]
+  equippedAvatar  String          @default("alien")
+  username        String?         @unique
 }
 
 model AirdropProfile {
@@ -73,4 +77,31 @@ model Announcement {
   content   String
   date      DateTime @default(now())
   isActive  Boolean  @default(true)
+}
+
+model UserGallery {
+  id          String   @id @default(cuid())
+  owner       String   @unique // The Wallet Address (e.g., "6cAE...")
+  name        String   @default("My Noble Gallery")
+  description String?
+  isPublic    Boolean  @default(true)
+  
+  // We store assets as a JSON array for performance.
+  // Structure: [{ mint: "...", position: 0, image: "...", name: "..." }]
+  assets      Json     
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AvatarRequest {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  wallet    String   
+  nftId     String
+  nftName   String
+  nftImage  String
+  status    String   @default("PENDING") // "PENDING", "GRANTED"
+  createdAt DateTime @default(now())
 }
