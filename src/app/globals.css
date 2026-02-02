@@ -111,3 +111,40 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #c5a059; /* Gold on hover */
 }
+
+/* src/app/globals.css */
+
+/* ... (previous styles) ... */
+
+/* --- FORCE HIDE LIVEBLOCKS BADGE (AGGRESSIVE) --- */
+
+/* 1. Target by Link URL (Most reliable) */
+a[href*="liveblocks.io"] {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    z-index: -9999 !important;
+}
+
+/* 2. Target by ID and common Class names */
+#liveblocks-badge,
+.lb-root,
+.lb-badge,
+.lb-portal {
+    display: none !important;
+}
+
+/* 3. Target by Attribute Wildcard (Catches dynamic classes) */
+div[class*="liveblocks-badge"],
+div[class*="lb-badge"] {
+    display: none !important;
+}
+
+/* 4. Target SVG internals if wrapper resists */
+svg[class*="liveblocks"] {
+    display: none !important;
+}

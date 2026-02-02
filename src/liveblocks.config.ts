@@ -29,12 +29,14 @@ type Presence = {
   avatarId: string;
   wallet?: string; 
   username?: string;
+  voiceId?: string | null;
 };
 
 // 3. CRITICAL FIX: Pass 'Storage' to the generics here
 export const { 
   RoomProvider, 
   useMyPresence, 
+  useUpdateMyPresence,
   useOthers, 
   useStorage, 
   useMutation 

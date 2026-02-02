@@ -42,7 +42,7 @@ export default function Home() {
       const message = `NobleNetwrk Portal Login\nWallet: ${publicKey.toBase58()}\nTimestamp: ${timestamp}`
       const signature = await signMessage(new TextEncoder().encode(message))
       
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch('/api/auth/wallet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

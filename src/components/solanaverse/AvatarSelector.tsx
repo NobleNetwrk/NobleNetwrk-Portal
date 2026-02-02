@@ -13,10 +13,11 @@ export default function AvatarSelector({ onClose, onSelect, currentAvatar, myNft
   const [view, setView] = useState<'SELECT' | 'REQUEST'>('SELECT')
   const [selectedNftForRequest, setSelectedNftForRequest] = useState<string | null>(null)
   
+  // 1. UPDATED INITIAL STATE to include Gecko
   const [availableAvatars, setAvailableAvatars] = useState([
     { id: 'human', name: 'Default Human', color: 'bg-[#F5CCA2]' },
-    { id: 'alien', name: 'Alien Scout', color: 'bg-[#88FF88]' },
-    { id: 'panda_3120', name: 'Golden King Panda', color: 'bg-[#FFD700]' } // Custom pre-loaded
+    { id: 'alien', name: 'Alien Scout', color: 'bg-[#88FF88]' }, 
+    { id: 'gecko_classic', name: 'Classic Red Eyes Gecko', color: 'bg-[#FFA500]' },
   ])
 
   // 1. FETCH UNLOCKED AVATARS ON MOUNT
@@ -26,22 +27,25 @@ export default function AvatarSelector({ onClose, onSelect, currentAvatar, myNft
         const res = await fetch(`/api/user/profile?wallet=${walletAddress}`)
         const data = await res.json()
         
-        // Define all possible avatars so we can display names properly
+        // 2. UPDATED ALL_POSSIBLE to include the Gecko definitions
         const ALL_POSSIBLE = [
              { id: 'human', name: 'Default Human', color: 'bg-[#F5CCA2]' },
              { id: 'alien', name: 'Alien Scout', color: 'bg-[#88FF88]' },
+             { id: 'gecko_classic', name: 'Classic Red Eyes Gecko', color: 'bg-[#FFA500]' }, // <--- ADDED
              { id: 'panda_3120', name: 'Golden King Panda', color: 'bg-[#FFD700]' }
         ];
 
+        // 3. YOUR ORIGINAL LOGIC (Restored)
+        // This handles "Custom (ID)" generation correctly
         if (data.unlocked) {
             const unlockedList = data.unlocked.map((id: string) => {
                 const known = ALL_POSSIBLE.find(a => a.id === id);
                 // If we don't know the name, show ID with a generic color
-                return known || { id, name: `Custom (${id})`, color: 'bg-purple-500' };
+                return known || { id, name: `Custom (${id})`, color: 'bg-purple-600' };
             });
             
-            // Merge defaults (everyone has human/alien) with unlocked list
-            const defaults = ALL_POSSIBLE.slice(0, 2);
+            // Merge defaults (everyone has human/alien/gecko) with unlocked list
+            const defaults = ALL_POSSIBLE.slice(0, 3); // Slice 0-3 gets Human, Alien, Gecko
             const final = [...defaults];
             
             unlockedList.forEach((u: any) => {
@@ -83,7 +87,7 @@ export default function AvatarSelector({ onClose, onSelect, currentAvatar, myNft
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
       <div className="bg-[#111] border border-white/20 w-full max-w-2xl rounded-2xl flex flex-col shadow-2xl overflow-hidden">
         
         {/* HEADER */}
@@ -91,7 +95,7 @@ export default function AvatarSelector({ onClose, onSelect, currentAvatar, myNft
           <h2 className="text-2xl font-black text-white uppercase italic">
             {view === 'SELECT' ? 'Choose Your Avatar' : 'Request Custom Avatar'}
           </h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-white text-xl">✕</button>
+          <button onClick={onClose} className="text-gray-500 hover:text-white text-xl transition-colors">✕</button>
         </div>
 
         {/* CONTENT */}
@@ -105,13 +109,19 @@ export default function AvatarSelector({ onClose, onSelect, currentAvatar, myNft
                     onClick={() => onSelect(av.id)}
                     className={`p-4 rounded-xl border-2 flex flex-col items-center gap-3 transition-all ${
                       currentAvatar === av.id 
-                        ? 'border-purple-500 bg-purple-500/20' 
-                        : 'border-white/10 bg-white/5 hover:border-white/30'
+                        ? 'border-purple-500 bg-purple-500/20 shadow-[0_0_20px_rgba(168,85,247,0.3)]' 
+                        : 'border-white/10 bg-white/5 hover:border-white/30 hover:bg-white/10'
                     }`}
                   >
-                    <div className={`w-16 h-16 rounded-full ${av.color} shadow-lg`} />
-                    <span className="text-white font-bold text-sm uppercase">{av.name}</span>
-                    {currentAvatar === av.id && <span className="text-[10px] text-purple-400">EQUIPPED</span>}
+                    <div className={`w-16 h-16 rounded-full ${av.color} shadow-lg flex items-center justify-center text-2xl`}>
+                        {/* Icons for visual flair */}
+                        {av.id.includes('human') && '👤'}
+                        {av.id.includes('alien') && '👽'}
+                        {av.id.includes('panda') && '🐼'}
+                        {av.id.includes('gecko') && '🦎'}
+                    </div>
+                    <span className="text-white font-bold text-sm uppercase text-center">{av.name}</span>
+                    {currentAvatar === av.id && <span className="text-[10px] text-purple-400 font-black tracking-wider">EQUIPPED</span>}
                   </button>
                 ))}
               </div>
@@ -139,8 +149,8 @@ export default function AvatarSelector({ onClose, onSelect, currentAvatar, myNft
                         key={nft.id}
                         onClick={() => setSelectedNftForRequest(nft.id)}
                         style={{ aspectRatio: '1/1' }}
-                        className={`relative w-full rounded-lg overflow-hidden cursor-pointer border-2 ${
-                            selectedNftForRequest === nft.id ? 'border-yellow-500' : 'border-transparent'
+                        className={`relative w-full rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${
+                            selectedNftForRequest === nft.id ? 'border-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.4)]' : 'border-transparent opacity-70 hover:opacity-100'
                         }`}
                     >
                         <img src={nft.image} className="w-full h-full object-cover" alt={nft.name} />
@@ -150,11 +160,11 @@ export default function AvatarSelector({ onClose, onSelect, currentAvatar, myNft
               </div>
 
               <div className="flex gap-3 mt-6 pt-4 border-t border-white/10">
-                <button onClick={() => setView('SELECT')} className="flex-1 py-3 text-gray-400 hover:text-white font-bold text-xs uppercase">Cancel</button>
+                <button onClick={() => setView('SELECT')} className="flex-1 py-3 text-gray-400 hover:text-white font-bold text-xs uppercase transition-colors">Cancel</button>
                 <button 
                     onClick={handleRequestSubmit}
                     disabled={!selectedNftForRequest}
-                    className="flex-1 py-3 bg-yellow-600 text-white font-bold rounded-lg hover:bg-yellow-500 disabled:opacity-50 text-xs uppercase"
+                    className="flex-1 py-3 bg-yellow-600 text-white font-bold rounded-lg hover:bg-yellow-500 disabled:opacity-50 text-xs uppercase shadow-lg transition-all"
                 >
                     Submit Request
                 </button>

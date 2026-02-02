@@ -249,11 +249,6 @@ export default function GalleryBuilder({ myNfts, walletAddress, onClose, existin
   }
 
   const activeItem = activeItemId ? placements[activeItemId] : null;
-
-  // --- 3D WYSIWYG FIX ---
-  // The builder shows the "Placeable Area" (40 units high), not the full wall (50 units).
-  // Side Walls: 100 units long / 40 units placeable height = 2.5 Ratio
-  // Back Wall: 60 units long / 40 units placeable height = 1.5 Ratio
   const wallAspectRatio = activeWall === 'back' ? 1.5 / 1 : 2.5 / 1;
 
   return (
@@ -383,23 +378,39 @@ export default function GalleryBuilder({ myNfts, walletAddress, onClose, existin
                 {/* MAIN CANVAS AREA */}
                 <div className="flex-1 p-8 relative overflow-hidden flex flex-col items-center justify-center bg-grid-pattern bg-[#050505]">
                     
-                    {/* WALL CONTAINER (FIXED COLLAPSE BUG) */}
+                    {/* WALL CONTAINER */}
                     <div 
                         className="relative border-2 border-white/20 shadow-2xl rounded-lg overflow-hidden transition-all bg-[#1a1a1a]"
                         style={{
-                            // FIX: Force height so it doesn't collapse. Let width adjust by aspect ratio.
                             height: '60vh', 
                             width: 'auto',
                             maxWidth: '100%',
-                            
-                            // DYNAMIC RATIO (Matches 3D Placeable Area):
-                            // Back Wall = 1.5 (60w / 40h)
-                            // Side Wall = 2.5 (100w / 40h)
                             aspectRatio: wallAspectRatio, 
                         }}
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={handleDropOnWall}
                     >
+                        {/* --- VISUAL PILLARS (BUILDER OVERLAY) --- */}
+                        {/* Side Walls: Pillar at 50% (Center) and 100% (Back Corner) */}
+                        {activeWall !== 'back' && (
+                            <>
+                                <div className="absolute top-0 bottom-0 left-[50%] w-4 bg-black/50 border-x border-white/5 z-0 flex items-center justify-center">
+                                    <span className="text-[10px] text-white/20 -rotate-90 whitespace-nowrap">PILLAR</span>
+                                </div>
+                                <div className="absolute top-0 bottom-0 right-0 w-8 bg-black/50 border-l border-white/5 z-0 flex items-center justify-center">
+                                    <span className="text-[10px] text-white/20 -rotate-90 whitespace-nowrap">CORNER</span>
+                                </div>
+                            </>
+                        )}
+                        {/* Back Wall: Pillars at Corners (0% and 100%) */}
+                        {activeWall === 'back' && (
+                            <>
+                                <div className="absolute top-0 bottom-0 left-0 w-6 bg-black/50 border-r border-white/5 z-0"></div>
+                                <div className="absolute top-0 bottom-0 right-0 w-6 bg-black/50 border-l border-white/5 z-0"></div>
+                            </>
+                        )}
+                        {/* ------------------------------------------- */}
+
                         <div className="absolute top-4 left-4 text-white/10 font-black text-6xl uppercase pointer-events-none select-none">{activeWall} WALL</div>
 
                         {Array.from(selectedIds).map(id => {
@@ -417,9 +428,6 @@ export default function GalleryBuilder({ myNfts, walletAddress, onClose, existin
                                     style={{
                                         left: `${item.x || 50}%`,
                                         top: `${item.y || 50}%`,
-                                        // RELATIVE SCALE FIX: 
-                                        // Frame is 12 units. Visible wall height is 40 units.
-                                        // 12/40 = 30% of builder height.
                                         height: '30%', 
                                         aspectRatio: '1/1',
                                         width: 'auto',

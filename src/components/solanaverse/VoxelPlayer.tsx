@@ -1,12 +1,13 @@
 "use client"
 import { useFrame, useThree } from '@react-three/fiber'
-import { useRef, useEffect } from 'react'
-import { Box } from '@react-three/drei'
+import { useRef, useEffect, useMemo, useState } from 'react'
+import { Box, Cylinder, Torus, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import { useMyPresence } from '@/liveblocks.config'
 
 interface VoxelPlayerProps {
   teleportPos?: [number, number, number] | null;
+  teleportRot?: number; 
   onPosUpdate?: (pos: THREE.Vector3) => void; 
   avatarId?: string;
   isRemote?: boolean;
@@ -14,12 +15,14 @@ interface VoxelPlayerProps {
   remoteRot?: number;
   remotePitch?: number; 
   isSelfieMode?: boolean; 
+  username?: string | null;
+  mobileInput?: React.MutableRefObject<{ move: { x: number, y: number }, look: { x: number, y: number } }>;
 }
 
 // --- CONFIGURATION ---
 const WALK_SPEED = 10
 const SPRINT_SPEED = 24
-const ROTATION_SPEED = 2.5 
+const ROTATION_SPEED = 1.5 
 const CAMERA_DISTANCE = 4.0 
 const CAMERA_HEIGHT = 2.0   
 
@@ -37,21 +40,64 @@ function Voxel({ x, y, z, color, scale = 0.06 }: { x: number, y: number, z: numb
   )
 }
 
+// --- ANIMATION HELPER ---
+// Standardizes the limb swinging math for bipeds
+function useBipedAnim(speedRef: React.MutableRefObject<number>) {
+  const leftLeg = useRef<THREE.Group>(null);
+  const rightLeg = useRef<THREE.Group>(null);
+  const leftArm = useRef<THREE.Group>(null);
+  const rightArm = useRef<THREE.Group>(null);
+  const bodyGroup = useRef<THREE.Group>(null);
+
+  useFrame((state) => {
+    const t = state.clock.elapsedTime * 15; // Animation frequency
+    const speed = Math.min(speedRef.current, 1.5); // Clamp visual speed
+    
+    // Apply rotations if moving
+    if (speed > 0.1) {
+        // Legs (Sine wave based on time)
+        if(leftLeg.current) leftLeg.current.rotation.x = Math.sin(t) * 0.8 * speed;
+        if(rightLeg.current) rightLeg.current.rotation.x = Math.sin(t + Math.PI) * 0.8 * speed;
+        
+        // Arms (Opposite to legs)
+        if(leftArm.current) leftArm.current.rotation.x = Math.sin(t + Math.PI) * 0.6 * speed;
+        if(rightArm.current) rightArm.current.rotation.x = Math.sin(t) * 0.6 * speed;
+        
+        // Slight body bounce/roll
+        if(bodyGroup.current) {
+            bodyGroup.current.position.y = 0.8 + Math.abs(Math.sin(t*2)) * 0.05 * speed;
+            bodyGroup.current.rotation.z = Math.sin(t) * 0.05 * speed;
+        }
+    } else {
+        // Reset to idle
+        if(leftLeg.current) leftLeg.current.rotation.x = THREE.MathUtils.lerp(leftLeg.current.rotation.x, 0, 0.1);
+        if(rightLeg.current) rightLeg.current.rotation.x = THREE.MathUtils.lerp(rightLeg.current.rotation.x, 0, 0.1);
+        if(leftArm.current) leftArm.current.rotation.x = THREE.MathUtils.lerp(leftArm.current.rotation.x, 0, 0.1);
+        if(rightArm.current) rightArm.current.rotation.x = THREE.MathUtils.lerp(rightArm.current.rotation.x, 0, 0.1);
+        if(bodyGroup.current) {
+            bodyGroup.current.position.y = THREE.MathUtils.lerp(bodyGroup.current.position.y, 0.8, 0.1);
+            bodyGroup.current.rotation.z = THREE.MathUtils.lerp(bodyGroup.current.rotation.z, 0, 0.1);
+        }
+    }
+  });
+
+  return { leftLeg, rightLeg, leftArm, rightArm, bodyGroup };
+}
+
 // --- AVATAR DEFINITIONS ---
 
-// 1. HUMAN AVATAR
-function AvatarHuman({ pitchRef }: { pitchRef: React.MutableRefObject<number> }) {
+// 1. HUMAN AVATAR (ARTICULATED)
+function AvatarHuman({ pitchRef, speedRef }: { pitchRef: React.MutableRefObject<number>, speedRef: React.MutableRefObject<number> }) {
   const s = 0.08; 
   const headGroup = useRef<THREE.Group>(null);
+  const { leftLeg, rightLeg, leftArm, rightArm, bodyGroup } = useBipedAnim(speedRef);
   
-  // FIX: Inverted pitch (-pitchRef.current) so head looks UP when camera looks UP
-  useFrame(() => { 
-      if (headGroup.current) headGroup.current.rotation.x = -pitchRef.current; 
-  });
+  useFrame(() => { if (headGroup.current) headGroup.current.rotation.x = -pitchRef.current; });
 
   const C_SKIN = "#F5CCA2"; const C_BEARD = "#FFFFFF"; const C_EYE = "#38B6FF"; const C_BROW = "#000000"; const C_SHADOW = "#E0B088";
   return (
     <group position={[0, -0.5, 0]}>
+      {/* HEAD */}
       <group ref={headGroup} position={[0, 1.8, 0]}>
         <Box args={[8*s, 8*s, 7*s]} position={[0, 4*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SKIN} /></Box>
         <Voxel x={-2} y={5} z={3.6} scale={s} color={C_EYE} /> <Voxel x={-3} y={5} z={3.6} scale={s} color={C_EYE} />
@@ -67,28 +113,41 @@ function AvatarHuman({ pitchRef }: { pitchRef: React.MutableRefObject<number> })
         <Box args={[5*s, 1.5*s, 1*s]} position={[0, -0.5*s, 3.5*s]} raycast={() => null}><meshStandardMaterial color={C_BEARD} /></Box>
         <Voxel x={-4.5} y={4} z={0} scale={s} color={C_SKIN} /> <Voxel x={4.5}  y={4} z={0} scale={s} color={C_SKIN} />
       </group>
-      <group position={[0, 0.8, 0]}>
+
+      {/* BODY GROUP (Pivot point for bouncing) */}
+      <group ref={bodyGroup} position={[0, 0.8, 0]}>
+        {/* Torso */}
         <Box args={[5*s, 6*s, 3*s]} position={[0, 4*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SKIN} /></Box>
         <Voxel x={-1.5} y={5.5} z={1.6} scale={s} color={C_SHADOW} /> <Voxel x={1.5}  y={5.5} z={1.6} scale={s} color={C_SHADOW} />
-        <Box args={[1.5*s, 6*s, 2*s]} position={[-3.5*s, 3.5*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SKIN} /></Box>
-        <Box args={[1.5*s, 6*s, 2*s]} position={[3.5*s, 3.5*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SKIN} /></Box>
-        <Box args={[2*s, 6*s, 2.5*s]} position={[-1.2*s, -2*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SKIN} /></Box>
-        <Box args={[2*s, 6*s, 2.5*s]} position={[1.2*s, -2*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SKIN} /></Box>
         <Voxel x={0} y={1} z={0.5} scale={s} color={C_SHADOW} />
+
+        {/* ARMS - Pivoted at Shoulder (Y approx 6.5s relative to body group) */}
+        <group ref={leftArm} position={[-3.5*s, 6*s, 0]}>
+             <Box args={[1.5*s, 6*s, 2*s]} position={[0, -2.5*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SKIN} /></Box>
+        </group>
+        <group ref={rightArm} position={[3.5*s, 6*s, 0]}>
+             <Box args={[1.5*s, 6*s, 2*s]} position={[0, -2.5*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SKIN} /></Box>
+        </group>
+
+        {/* LEGS - Pivoted at Hip (Y approx 1s relative to body group) */}
+        <group ref={leftLeg} position={[-1.2*s, 1*s, 0]}>
+             <Box args={[2*s, 6*s, 2.5*s]} position={[0, -3*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SKIN} /></Box>
+        </group>
+        <group ref={rightLeg} position={[1.2*s, 1*s, 0]}>
+             <Box args={[2*s, 6*s, 2.5*s]} position={[0, -3*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SKIN} /></Box>
+        </group>
       </group>
     </group>
   )
 }
 
-// 2. ALIEN AVATAR
-function AvatarAlien({ pitchRef }: { pitchRef: React.MutableRefObject<number> }) {
+// 2. ALIEN AVATAR (ARTICULATED)
+function AvatarAlien({ pitchRef, speedRef }: { pitchRef: React.MutableRefObject<number>, speedRef: React.MutableRefObject<number> }) {
   const s = 0.08; 
   const headGroup = useRef<THREE.Group>(null);
+  const { leftLeg, rightLeg, leftArm, rightArm, bodyGroup } = useBipedAnim(speedRef);
   
-  // FIX: Inverted pitch
-  useFrame(() => { 
-      if (headGroup.current) headGroup.current.rotation.x = -pitchRef.current; 
-  });
+  useFrame(() => { if (headGroup.current) headGroup.current.rotation.x = -pitchRef.current; });
 
   const C_SKIN = "#88FF88"; const C_SUIT = "#222222"; const C_EYE = "#FF0000";
   return (
@@ -98,25 +157,45 @@ function AvatarAlien({ pitchRef }: { pitchRef: React.MutableRefObject<number> })
         <Voxel x={-2} y={5} z={3.6} scale={s} color={C_EYE} /> <Voxel x={2} y={5} z={3.6} scale={s} color={C_EYE} />
         <Voxel x={0} y={8} z={0} scale={s} color={C_SKIN} />
       </group>
-      <group position={[0, 0.8, 0]}>
+      <group ref={bodyGroup} position={[0, 0.8, 0]}>
         <Box args={[5*s, 6*s, 3*s]} position={[0, 4*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SUIT} /></Box>
-        <Box args={[1.5*s, 6*s, 2*s]} position={[-3.5*s, 3.5*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SUIT} /></Box>
-        <Box args={[1.5*s, 6*s, 2*s]} position={[3.5*s, 3.5*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SUIT} /></Box>
-        <Box args={[2*s, 6*s, 2.5*s]} position={[-1.2*s, -2*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SUIT} /></Box>
-        <Box args={[2*s, 6*s, 2.5*s]} position={[1.2*s, -2*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SUIT} /></Box>
+        
+        {/* ARMS */}
+        <group ref={leftArm} position={[-3.5*s, 6*s, 0]}>
+            <Box args={[1.5*s, 6*s, 2*s]} position={[0, -2.5*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SUIT} /></Box>
+        </group>
+        <group ref={rightArm} position={[3.5*s, 6*s, 0]}>
+            <Box args={[1.5*s, 6*s, 2*s]} position={[0, -2.5*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SUIT} /></Box>
+        </group>
+
+        {/* LEGS */}
+        <group ref={leftLeg} position={[-1.2*s, 1*s, 0]}>
+            <Box args={[2*s, 6*s, 2.5*s]} position={[0, -3*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SUIT} /></Box>
+        </group>
+        <group ref={rightLeg} position={[1.2*s, 1*s, 0]}>
+            <Box args={[2*s, 6*s, 2.5*s]} position={[0, -3*s, 0]} raycast={() => null}><meshStandardMaterial color={C_SUIT} /></Box>
+        </group>
       </group>
     </group>
   )
 }
 
-// 3. PANDA AVATAR
-function AvatarGoldenPanda({ pitchRef }: { pitchRef: React.MutableRefObject<number> }) {
+// 3. PANDA AVATAR (WADDLE ANIMATION)
+function AvatarGoldenPanda({ pitchRef, speedRef }: { pitchRef: React.MutableRefObject<number>, speedRef: React.MutableRefObject<number> }) {
   const s = 0.04; 
   const headGroup = useRef<THREE.Group>(null);
+  const bodyGroup = useRef<THREE.Group>(null);
   
-  // FIX: Inverted pitch
-  useFrame(() => { 
+  useFrame((state) => { 
       if (headGroup.current) headGroup.current.rotation.x = -pitchRef.current; 
+      
+      // Panda Waddle (Z-rotation rocking)
+      const t = state.clock.elapsedTime * 10;
+      const speed = Math.min(speedRef.current, 1);
+      if(bodyGroup.current && speed > 0.1) {
+          bodyGroup.current.rotation.z = Math.sin(t) * 0.1 * speed;
+          bodyGroup.current.position.y = 0.2 + Math.abs(Math.sin(t)) * 0.05 * speed;
+      }
   });
 
   const C_GOLD_BODY = "#C5A059"; const C_GOLD_DARK = "#8B6508"; const C_GOLD_BRIGHT = "#FFD700";
@@ -145,7 +224,7 @@ function AvatarGoldenPanda({ pitchRef }: { pitchRef: React.MutableRefObject<numb
             <Voxel x={-6} y={2} z={5} scale={s} color={C_GOLD_BRIGHT} /> <Voxel x={6} y={2} z={5} scale={s} color={C_GOLD_BRIGHT} />
         </group>
       </group>
-      <group position={[0, 0.2, 0]}>
+      <group ref={bodyGroup} position={[0, 0.2, 0]}>
         <Box args={[14*s, 16*s, 10*s]} position={[0, 7*s, 0]} raycast={() => null}><meshStandardMaterial color={C_GOLD_BODY} metalness={0.7} roughness={0.4} /></Box>
         <Box args={[10*s, 12*s, 1*s]} position={[0, 6*s, 5.1*s]} raycast={() => null}><meshStandardMaterial color={C_WHITE_BASE} /></Box>
         <Box args={[5*s, 14*s, 5*s]} position={[-9*s, 7*s, 0]} rotation={[0, 0, 0.1]}><meshStandardMaterial color={C_GOLD_DARK} /></Box>
@@ -158,11 +237,178 @@ function AvatarGoldenPanda({ pitchRef }: { pitchRef: React.MutableRefObject<numb
         <group position={[0, 10*s, 6*s]}>
             <group position={[0, 1.5*s, 0]} rotation={[0, 0, 0.78]}><Box args={[2.5*s, 2.5*s, 0.3*s]}><meshStandardMaterial color={C_GOLD_BRIGHT} /></Box><Box args={[1*s, 1*s, 0.35*s]}><meshStandardMaterial color="#000" /></Box></group>
             <group position={[-1.5*s, -1*s, 0.1*s]} rotation={[0, 0, 0.78]}><Box args={[2.5*s, 2.5*s, 0.3*s]}><meshStandardMaterial color={C_GOLD_BRIGHT} /></Box><Box args={[1*s, 1*s, 0.35*s]}><meshStandardMaterial color="#000" /></Box></group>
-            <group position={[1.5*s, -1*s, 0.1*s]} rotation={[0, 0, 0.78]}><Box args={[2.5*s, 2.5*s, 0.3*s]}><meshStandardMaterial color={C_GOLD_BRIGHT} /></Box><Box args={[1*s, 1*s, 0.35*s]}><meshStandardMaterial color="#000" /></Box></group>
+            <group position={[-1.5*s, -1*s, 0.1*s]} rotation={[0, 0, 0.78]}><Box args={[2.5*s, 2.5*s, 0.3*s]}><meshStandardMaterial color={C_GOLD_BRIGHT} /></Box><Box args={[1*s, 1*s, 0.35*s]}><meshStandardMaterial color="#000" /></Box></group>
         </group>
       </group>
     </group>
   )
+}
+// 4. GALACTIC GECKO AVATAR (ARTICULATED)
+function AvatarGalacticGecko({ pitchRef, speedRef }: { pitchRef: React.MutableRefObject<number>, speedRef: React.MutableRefObject<number> }) {
+  const s = 0.05; 
+  const headGroup = useRef<THREE.Group>(null);
+  const { leftLeg, rightLeg, leftArm, rightArm, bodyGroup } = useBipedAnim(speedRef);
+  
+  useFrame(() => { 
+      if (headGroup.current) headGroup.current.rotation.x = -pitchRef.current; 
+  });
+
+  const C_SKIN = "#66b050"; // Gecko Green
+  const C_SUIT = "#111111"; // Black Suit
+  const C_SHIRT = "#FFFFFF"; // White Shirt
+  const C_TIE = "#00FF00"; // Bright Green Tie
+  const C_BEARD_ROCK = "#4a4036"; // Dark brownish grey crystals
+  const C_GOGGLE_HOUSING = "#2b2b2b"; // Dark metal
+  const C_LENS = "#00ffff"; // Cyan/Turquoise glowing lens
+  const C_COIL_BASE = "#8c5a3c"; // Wood/Copper base
+  const C_BULB = "#fffdd0"; // Cream/Pale Yellow
+  const C_LIGHTNING = "#ffff00"; // Yellow sparks
+  const C_MECHANICAL = "#777777"; // Grey metal side piece
+  const C_EYE_WHITE = "#FFFFFF";
+  const C_PUPIL = "#000000";
+
+  return (
+    <group position={[0, -0.5, 0]}>
+      {/* HEAD GROUP */}
+      <group ref={headGroup} position={[0, 1.7, 0]}>
+        
+        {/* --- HEAD BASE --- */}
+        <Box args={[10*s, 9*s, 11*s]} position={[0, 4.5*s, 1*s]}><meshStandardMaterial color={C_SKIN} /></Box>
+        <Box args={[8*s, 4*s, 8*s]} position={[0, 2*s, 9*s]}><meshStandardMaterial color={C_SKIN} /></Box>
+        <Box args={[11*s, 4*s, 8*s]} position={[0, 1*s, 0]}><meshStandardMaterial color={C_SKIN} /></Box>
+
+        {/* --- ROCK BEARD (Crystal Spikes) --- */}
+        <group position={[0, 0, 10*s]}>
+            <Box args={[2*s, 5*s, 2*s]} position={[0, -2*s, 0]} rotation={[0.2, 0, 0]}><meshStandardMaterial color={C_BEARD_ROCK} /></Box>
+            <Box args={[1.5*s, 4*s, 1.5*s]} position={[2*s, -1.5*s, -1*s]} rotation={[0.1, 0, -0.2]}><meshStandardMaterial color={C_BEARD_ROCK} /></Box>
+            <Box args={[1.5*s, 4*s, 1.5*s]} position={[-2*s, -1.5*s, -1*s]} rotation={[0.1, 0, 0.2]}><meshStandardMaterial color={C_BEARD_ROCK} /></Box>
+            <Box args={[1.5*s, 3*s, 1.5*s]} position={[3.5*s, -1*s, -2*s]} rotation={[0, 0, -0.4]}><meshStandardMaterial color={C_BEARD_ROCK} /></Box>
+            <Box args={[1.5*s, 3*s, 1.5*s]} position={[-3.5*s, -1*s, -2*s]} rotation={[0, 0, 0.4]}><meshStandardMaterial color={C_BEARD_ROCK} /></Box>
+        </group>
+
+        {/* --- EYES --- */}
+        <group position={[3.5*s, 5*s, 5*s]} rotation={[0, 0.2, 0]}>
+             <Box args={[3*s, 3*s, 2*s]}><meshStandardMaterial color={C_SKIN} /></Box>
+             <Box args={[2*s, 2*s, 0.5*s]} position={[0, 0, 1.1*s]}><meshStandardMaterial color={C_EYE_WHITE} /></Box>
+             <Box args={[0.5*s, 1.5*s, 0.1*s]} position={[0, 0, 1.4*s]}><meshStandardMaterial color={C_PUPIL} /></Box>
+        </group>
+
+        <group position={[-3.5*s, 5*s, 6*s]} rotation={[0, -0.1, 0]}>
+             <Cylinder args={[2.5*s, 2.5*s, 6*s, 16]} rotation={[Math.PI/2, 0, 0]} position={[0, 0, 0]}>
+                <meshStandardMaterial color={C_GOGGLE_HOUSING} metalness={0.6} roughness={0.4} />
+             </Cylinder>
+             <Cylinder args={[2*s, 2*s, 0.5*s, 16]} rotation={[Math.PI/2, 0, 0]} position={[0, 0, 3.1*s]}>
+                <meshStandardMaterial color={C_LENS} emissive={C_LENS} emissiveIntensity={1.5} toneMapped={false} />
+             </Cylinder>
+             <Box args={[11*s, 1*s, 11*s]} position={[3.5*s, 0, -4*s]}><meshStandardMaterial color="#333" /></Box>
+        </group>
+
+        {/* --- TESLA COIL HEADGEAR --- */}
+        <group position={[0, 9*s, 2*s]}>
+            {/* Left Coil */}
+            <group position={[3*s, 0, 0]}>
+                <Cylinder args={[1.5*s, 1.5*s, 2*s, 8]} position={[0, 1*s, 0]}><meshStandardMaterial color={C_COIL_BASE} /></Cylinder>
+                <Torus args={[1.6*s, 0.2*s, 8, 16]} position={[0, 0.5*s, 0]} rotation={[Math.PI/2, 0, 0]}><meshStandardMaterial color="#ffd700" /></Torus>
+                <Torus args={[1.6*s, 0.2*s, 8, 16]} position={[0, 1.5*s, 0]} rotation={[Math.PI/2, 0, 0]}><meshStandardMaterial color="#ffd700" /></Torus>
+                <Box args={[3.5*s, 3.5*s, 3.5*s]} position={[0, 3.5*s, 0]}>
+                    <meshStandardMaterial color={C_BULB} emissive={C_BULB} emissiveIntensity={0.6} />
+                </Box>
+                <group position={[2*s, 4*s, 0]} rotation={[0, 0, -0.5]}>
+                    <Box args={[0.5*s, 3*s, 0.5*s]}><meshStandardMaterial color={C_LIGHTNING} emissive={C_LIGHTNING} /></Box>
+                </group>
+            </group>
+
+            {/* Right Coil + Antenna */}
+            <group position={[-3*s, 0, 0]}>
+                <Cylinder args={[1.5*s, 1.5*s, 2*s, 8]} position={[0, 1*s, 0]}><meshStandardMaterial color={C_COIL_BASE} /></Cylinder>
+                <Torus args={[1.6*s, 0.2*s, 8, 16]} position={[0, 0.5*s, 0]} rotation={[Math.PI/2, 0, 0]}><meshStandardMaterial color="#ffd700" /></Torus>
+                <Torus args={[1.6*s, 0.2*s, 8, 16]} position={[0, 1.5*s, 0]} rotation={[Math.PI/2, 0, 0]}><meshStandardMaterial color="#ffd700" /></Torus>
+                <Box args={[3.5*s, 3.5*s, 3.5*s]} position={[0, 3.5*s, 0]}>
+                    <meshStandardMaterial color={C_BULB} emissive={C_BULB} emissiveIntensity={0.6} />
+                </Box>
+                {/* Side Antenna Structure */}
+                <group position={[-2.5*s, 1*s, 0]}>
+                    <Box args={[3*s, 0.5*s, 0.5*s]}><meshStandardMaterial color={C_MECHANICAL} /></Box>
+                    <Box args={[0.5*s, 4*s, 0.5*s]} position={[-1.5*s, 2*s, 0]}><meshStandardMaterial color={C_MECHANICAL} /></Box>
+                    <Box args={[0.5*s, 3*s, 0.5*s]} position={[-1.5*s, 3.5*s, 0]}><meshStandardMaterial color="#cd7f32" emissive="#cd7f32" emissiveIntensity={2} /></Box>
+                    <Box args={[2*s, 0.2*s, 0.2*s]} position={[-0.5*s, 3*s, 0]} rotation={[0,0, -0.5]}><meshStandardMaterial color={C_LIGHTNING} emissive={C_LIGHTNING} /></Box>
+                </group>
+            </group>
+        </group>
+
+      </group>
+
+      {/* BODY - BLACK SUIT (Refactored for Articulation) */}
+      <group ref={bodyGroup} position={[0, 0.8, 0]}>
+        <Box args={[7*s, 8*s, 3.5*s]} position={[0, 3*s, 0]}><meshStandardMaterial color={C_SUIT} /></Box>
+        <Box args={[3*s, 3*s, 3.6*s]} position={[0, 5.5*s, 0]}><meshStandardMaterial color={C_SHIRT} /></Box>
+        <Box args={[1*s, 5*s, 3.7*s]} position={[0, 4.5*s, 0]}><meshStandardMaterial color={C_TIE} /></Box>
+        
+        {/* ARMS - Pivoted at Shoulder (Y approx 5.5s) */}
+        <group ref={leftArm} position={[-2.5*s, 5.5*s, 0]}>
+            <Box args={[2.5*s, 6*s, 3.8*s]} position={[0, -2.5*s, 0]} rotation={[0, 0, -0.1]}><meshStandardMaterial color={C_SUIT} /></Box>
+            <Box args={[2*s, 2*s, 2*s]} position={[-2.5*s, -6*s, 0]}><meshStandardMaterial color={C_SKIN} /></Box>
+        </group>
+        <group ref={rightArm} position={[2.5*s, 5.5*s, 0]}>
+            <Box args={[2.5*s, 6*s, 3.8*s]} position={[0, -2.5*s, 0]} rotation={[0, 0, 0.1]}><meshStandardMaterial color={C_SUIT} /></Box>
+            <Box args={[2*s, 2*s, 2*s]} position={[2.5*s, -6*s, 0]}><meshStandardMaterial color={C_SKIN} /></Box>
+        </group>
+
+        {/* LEGS - Pivoted at Hip (Y approx 0s) */}
+        <group ref={leftLeg} position={[-1.6*s, 0, 0]}>
+            <Box args={[2.8*s, 6*s, 3*s]} position={[0, -3*s, 0]}><meshStandardMaterial color={C_SUIT} /></Box>
+        </group>
+        <group ref={rightLeg} position={[1.6*s, 0, 0]}>
+            <Box args={[2.8*s, 6*s, 3*s]} position={[0, -3*s, 0]}><meshStandardMaterial color={C_SUIT} /></Box>
+        </group>
+
+        {/* Outer thigh pads - Attached to body for now as they are high up */}
+        <Box args={[2.5*s, 7*s, 2.5*s]} position={[-4.5*s, 3.5*s, 0]} rotation={[0, 0, 0.1]}><meshStandardMaterial color={C_SUIT} /></Box>
+        <Box args={[2.5*s, 7*s, 2.5*s]} position={[4.5*s, 3.5*s, 0]} rotation={[0, 0, -0.1]}><meshStandardMaterial color={C_SUIT} /></Box>
+      </group>
+    </group>
+  )
+}
+
+// 5. NEW: CLASSIC RED EYES GECKO (Direct Scaling Fix)
+function AvatarGeckoGLB({ pitchRef, speedRef }: { pitchRef: React.MutableRefObject<number>, speedRef: React.MutableRefObject<number> }) {
+    const { scene } = useGLTF('/ClassicRedEyesGecko.glb')
+    const meshRef = useRef<THREE.Group>(null);
+    
+    // Clone scene for multiplayer support
+    const clone = useMemo(() => {
+        const c = scene.clone()
+        c.scale.set(50, 50, 50) 
+        c.traverse((node: any) => {
+            if (node.isMesh) { node.castShadow = true; node.receiveShadow = true; }
+        })
+        return c
+    }, [scene])
+    
+    const headBone = useMemo(() => {
+        return clone.getObjectByName('mixamorig:Head') || clone.getObjectByName('Head')
+    }, [clone])
+
+    // Apply Pitch & Waddle
+    useFrame((state) => {
+        if (headBone) {
+            headBone.rotation.x = -pitchRef.current + 0.1 
+        }
+        
+        // Simple bouncy waddle for the GLB since we don't have individual limb access easily
+        const t = state.clock.elapsedTime * 12;
+        const speed = Math.min(speedRef.current, 1);
+        if(meshRef.current && speed > 0.1) {
+             meshRef.current.position.y = Math.abs(Math.sin(t)) * 0.1 * speed;
+             meshRef.current.rotation.z = Math.sin(t) * 0.05 * speed;
+        }
+    })
+
+    return (
+        <group ref={meshRef} position={[0, 0, 0]}>
+             <primitive object={clone} position={[0, 0, 0]} />
+        </group>
+    )
 }
 
 // --- AVATAR REGISTRY ---
@@ -170,21 +416,29 @@ const AVATAR_REGISTRY: Record<string, React.FC<any>> = {
     'human': AvatarHuman,
     'alien': AvatarAlien,
     'panda_3120': AvatarGoldenPanda, 
+    'gecko_8062': AvatarGalacticGecko, 
+    'gecko_classic': AvatarGeckoGLB,
 };
 
 export default function VoxelPlayer({ 
-  teleportPos, 
+  teleportPos,
+  teleportRot, // NEW PROP
   onPosUpdate, 
   avatarId = 'human',
   isRemote = false, 
   remotePos, 
   remoteRot,
   remotePitch,
-  isSelfieMode = false 
+  isSelfieMode = false,
+  username ,
+  mobileInput
 }: VoxelPlayerProps) {
   const { camera } = useThree()
   const avatarRef = useRef<THREE.Group>(null)
   const pitchRef = useRef(0);
+  const animationSpeedRef = useRef(0); // Track speed for animation
+  const prevRemotePos = useRef(new THREE.Vector3(0,0,0)); // For remote velocity calc
+
   const [presence, updateMyPresence] = !isRemote ? useMyPresence() : [null, null];
   
   const keys = useRef<Record<string, boolean>>({})
@@ -217,14 +471,14 @@ export default function VoxelPlayer({
   useEffect(() => {
     if (teleportPos && !isRemote) {
       playerPos.current.set(...teleportPos)
-      rotation.current.yaw = Math.PI
+      rotation.current.yaw = teleportRot ?? Math.PI 
       rotation.current.pitch = 0.1
       if (avatarRef.current) {
         avatarRef.current.position.copy(playerPos.current)
         avatarRef.current.rotation.y = rotation.current.yaw
       }
     }
-  }, [teleportPos, isRemote])
+  }, [teleportPos, teleportRot, isRemote])
 
   // --- LOOP ---
   useFrame((state, delta) => {
@@ -233,6 +487,16 @@ export default function VoxelPlayer({
         // 1. REMOTE PLAYER
         if (isRemote && remotePos) {
             const targetPos = new THREE.Vector3(...remotePos)
+            
+            // Calculate velocity for animation
+            const dist = targetPos.distanceTo(prevRemotePos.current);
+            const instSpeed = dist / delta;
+            
+            // Smoothly interpolate animation speed
+            animationSpeedRef.current = THREE.MathUtils.lerp(animationSpeedRef.current, instSpeed > 0.5 ? 1 : 0, 0.1);
+            
+            prevRemotePos.current.copy(targetPos); // Update previous pos
+
             avatarRef.current.position.lerp(targetPos, 0.2)
             avatarRef.current.rotation.y = remoteRot || 0
             pitchRef.current = remotePitch || 0;
@@ -242,9 +506,8 @@ export default function VoxelPlayer({
         // --- SPLIT LOGIC BASED ON MODE ---
         if (isSelfieMode) {
             // === SELFIE MODE CONTROLS ===
-            // Arrows move CAMERA ORBIT, NOT PLAYER
-            // Player stays locked in place (Tripod mode)
-            
+            animationSpeedRef.current = 0; // No walking in selfie mode
+
             if (keys.current['ArrowLeft']) selfieOrbit.current.yaw += 2.0 * delta;
             if (keys.current['ArrowRight']) selfieOrbit.current.yaw -= 2.0 * delta;
             if (keys.current['ArrowUp']) selfieOrbit.current.height += 2.0 * delta;
@@ -259,9 +522,7 @@ export default function VoxelPlayer({
             pitchRef.current = 0; // Look straight ahead for photo
 
             // Calculate Orbit Camera Position
-            // We orbit around the head (Y=1.6) at a fixed distance
             const dist = 2.5; 
-            // Total Angle = Player Rotation + PI (Front) + Orbit Offset
             const totalYaw = rotation.current.yaw + Math.PI + selfieOrbit.current.yaw;
             
             const offsetX = Math.sin(totalYaw) * dist;
@@ -273,46 +534,64 @@ export default function VoxelPlayer({
                 playerPos.current.z + offsetZ
             );
             
-            // Snap camera instantly (No Lerp/Elastic)
             camera.position.copy(camPos);
             
-            // Look at Head
             const headPos = playerPos.current.clone().add(new THREE.Vector3(0, 1.6, 0));
             camera.lookAt(headPos);
 
         } else {
             // === NORMAL MODE CONTROLS ===
-            // Arrows move PLAYER YAW/PITCH
             
+            // === NORMAL MODE CONTROLS ===
+            
+            // 1. ROTATION (Add Keyboard + Mobile Look)
+            // Note: Mobile X rotates Yaw, Mobile Y rotates Pitch
+            const joyLookX = mobileInput?.current.look.x || 0;
+            const joyLookY = mobileInput?.current.look.y || 0;
+
             if (keys.current['ArrowLeft']) rotation.current.yaw += ROTATION_SPEED * delta
             if (keys.current['ArrowRight']) rotation.current.yaw -= ROTATION_SPEED * delta
+            
+            // Add Mobile Yaw
+            rotation.current.yaw -= joyLookX * ROTATION_SPEED * delta * 1.5; // Multiplier for sensitivity
+
             if (keys.current['ArrowUp']) rotation.current.pitch += ROTATION_SPEED * delta
             if (keys.current['ArrowDown']) rotation.current.pitch -= ROTATION_SPEED * delta
+            
+            // Add Mobile Pitch
+            rotation.current.pitch += joyLookY * ROTATION_SPEED * delta * 1.5;
 
             rotation.current.pitch = Math.max(-0.5, Math.min(0.5, rotation.current.pitch))
             pitchRef.current = rotation.current.pitch;
 
+            // 2. MOVEMENT (Add Keyboard + Mobile Move)
             const isSprinting = keys.current['ShiftLeft'] || keys.current['ShiftRight']
             const speed = (isSprinting ? SPRINT_SPEED : WALK_SPEED) * delta
 
-            const forward = (keys.current['KeyW'] ? 1 : 0) - (keys.current['KeyS'] ? 1 : 0)
-            const side = (keys.current['KeyD'] ? 1 : 0) - (keys.current['KeyA'] ? 1 : 0)
+            // Combine Keyboard (0 or 1) with Joystick (-1 to 1)
+            const joyMoveY = mobileInput?.current.move.y || 0;
+            const joyMoveX = mobileInput?.current.move.x || 0;
+
+            const forward = (keys.current['KeyW'] ? 1 : 0) - (keys.current['KeyS'] ? 1 : 0) + joyMoveY;
+            const side = (keys.current['KeyD'] ? 1 : 0) - (keys.current['KeyA'] ? 1 : 0) + joyMoveX;
 
             const moveDir = new THREE.Vector3(side, 0, -forward).normalize()
             moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), rotation.current.yaw)
 
             if (moveDir.lengthSq() > 0) {
                 playerPos.current.add(moveDir.multiplyScalar(speed))
+                // Ramping up animation speed
+                animationSpeedRef.current = THREE.MathUtils.lerp(animationSpeedRef.current, isSprinting ? 1.5 : 1.0, 0.2);
+            } else {
+                // Ramping down animation speed
+                animationSpeedRef.current = THREE.MathUtils.lerp(animationSpeedRef.current, 0, 0.2);
             }
 
             avatarRef.current.position.copy(playerPos.current)
             avatarRef.current.rotation.y = rotation.current.yaw
             
-            if (moveDir.lengthSq() > 0) {
-                const bobOffset = Math.sin(state.clock.elapsedTime * 20) * 0.08
-                avatarRef.current.position.y += bobOffset 
-            }
-
+            // REMOVED: Old "Bob" logic. The individual avatars now handle the bounce for more realism.
+            
             // Normal Camera Follow (Third Person)
             const offset = new THREE.Vector3(0, 0, CAMERA_DISTANCE)
             const rotEuler = new THREE.Euler(rotation.current.pitch, rotation.current.yaw, 0, 'YXZ')
@@ -321,7 +600,6 @@ export default function VoxelPlayer({
             const camPos = playerPos.current.clone().add(offset)
             camPos.y += CAMERA_HEIGHT 
             
-            // STRICT COPY (No Elasticity)
             camera.position.copy(camPos)
             camera.lookAt(playerPos.current.clone().add(new THREE.Vector3(0, 1.8, 0))) 
         }
@@ -333,18 +611,22 @@ export default function VoxelPlayer({
                 position: [playerPos.current.x, playerPos.current.y, playerPos.current.z],
                 rotation: rotation.current.yaw,
                 pitch: rotation.current.pitch, 
-                avatarId: avatarId
+                avatarId: avatarId,
+                username: username || undefined
             })
         }
     }
   })
 
+
+  
   const AvatarComponent = AVATAR_REGISTRY[avatarId] || AVATAR_REGISTRY['human'];
 
   return (
     <group ref={avatarRef} position={[0,0,0]} raycast={() => null}> 
         <group rotation={[0, Math.PI, 0]}>
-            <AvatarComponent pitchRef={pitchRef} />
+            {/* Pass the dynamic speed ref to the avatar */}
+            <AvatarComponent pitchRef={pitchRef} speedRef={animationSpeedRef} />
         </group>
         {isRemote && <mesh position={[0, 2.5, 0]} />}
     </group>

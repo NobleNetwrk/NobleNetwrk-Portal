@@ -1,3 +1,5 @@
+// Portal Page /src/app/Portal/page.tsx
+
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
@@ -42,6 +44,7 @@ export default function Portal() {
   const [username, setUsername] = useState<string>("")
   const [isSavingName, setIsSavingName] = useState(false)
   
+  // --- HOOKS ---
   const { holdings: walletData, loading: holdingsLoading, refetch } = useAssetHoldings(linkedWallets)
   
   const { 
@@ -56,7 +59,7 @@ export default function Portal() {
   const [showHodlBreakdown, setShowHodlBreakdown] = useState(false);
   const [expandedCollection, setExpandedCollection] = useState<string | null>(null);
 
-  // --- ASSET CONFIGURATION ---
+  // --- ASSET CONFIGURATION (Logic from VPS, Styling from Gold Theme) ---
   const assetConfig = [
     { 
       key: 'solanaK9s', label: 'Solana K9', icon: '/solana-k9s-icon.png', color: 'blue', action: 'K9Impound', actionLabel: 'Impound',
@@ -104,7 +107,7 @@ export default function Portal() {
     },
   ];
 
-  // --- TOTALS ---
+  // --- TOTALS CALCULATION (Strict Logic from VPS Code) ---
   const totals = useMemo(() => {
     const initial = {
       sol: 0, ntwrk: 0, genetics: 0, extracts: 0, namaste: 0, solanaK9s: 0,
@@ -126,6 +129,7 @@ export default function Portal() {
       tso: acc.tso + curr.tso,
       d3fenders: acc.d3fenders + curr.d3fenders,
       stonedApeCrew: acc.stonedApeCrew + curr.stonedApeCrew,
+      // Verified Logic: Acc.plural + Curr.singular (matches AssetHoldings interface)
       immortalGeckos: acc.immortalGeckos + curr.immortalGecko, 
       timeTravelingChimps: acc.timeTravelingChimps + (curr.timeTravelingChimps || 0),
       player1: acc.player1 + (curr.player1 || 0),
@@ -212,6 +216,7 @@ export default function Portal() {
 
   const groupedAssets = getBreakdown();
 
+  // --- IMPROVED FUNCTION: Uses new consolidated endpoint ---
   const handleSaveUsername = async () => {
     if (!userId) return toast.error("Please login first");
     if (!username || username.length < 3) return toast.error("Username must be at least 3 characters");
@@ -238,6 +243,7 @@ export default function Portal() {
     }
   };
 
+  // --- IMPROVED FUNCTION: Uses new consolidated endpoint ---
   const handleLinkWallet = async () => {
     if (!publicKey || !signMessage || !userId) return toast.error("Please login first.")
     setIsLinking(true)
@@ -245,7 +251,7 @@ export default function Portal() {
       const message = `Link Wallet to NobleNetwrk\nWallet: ${publicKey.toBase58()}\nTS: ${new Date().getTime()}`
       const signature = await signMessage(new TextEncoder().encode(message))
       
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch('/api/auth/wallet', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -258,41 +264,57 @@ export default function Portal() {
       
       const data = await res.json()
       if (res.ok) {
-        const newDetails = data.walletsDetailed || data.wallets.map((w:string) => ({ address: w, isPrimary: false }))
+        // Handle both detailed and simple array responses for robustness
+        const newDetails = data.walletsDetailed || data.wallets?.map((w:string) => ({ address: w, isPrimary: false })) || []
+        
         localStorage.setItem('noble_wallets', JSON.stringify(newDetails))
         setWalletDetails(newDetails)
         setLinkedWallets(newDetails.map((w: any) => w.address))
+        
+        // If it's a new login, store the user ID
+        if (data.userId) {
+            setUserId(data.userId);
+            localStorage.setItem('noble_userId', data.userId);
+        }
+        
         toast.success('Wallet linked successfully!')
       } else {
         toast.error(data.error || 'Link failed')
       }
-    } catch (err) { console.error(err) } finally { setIsLinking(false) }
+    } catch (err) { console.error(err); toast.error('Link Error') } finally { setIsLinking(false) }
   }
 
+  // --- IMPROVED FUNCTION: Uses new consolidated endpoint ---
   const handleSetPrimary = async (targetWallet: string) => {
     if (!publicKey || !signMessage || !userId) return
     setIsSettingPrimary(true)
     try {
       const message = `Authorize Primary Airdrop Wallet Change\nNew Target: ${targetWallet}\nTS: ${Date.now()}`
       const signatureBytes = await signMessage(new TextEncoder().encode(message))
-      const signature = Buffer.from(signatureBytes).toString('base64')
+      const signature = base58.encode(signatureBytes) 
 
-      const res = await fetch('/api/auth/set-primary', {
-        method: 'POST',
+      const res = await fetch('/api/auth/wallet', { 
+        method: 'PATCH', 
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, address: targetWallet, message, signature })
+        body: JSON.stringify({ 
+            userId, 
+            address: targetWallet, 
+            message, 
+            signature 
+        })
       })
 
       const data = await res.json()
       if (res.ok) {
-        const updatedList = walletDetails.map(w => ({ ...w, isPrimary: w.address === targetWallet }))
-        setWalletDetails(updatedList)
-        localStorage.setItem('noble_wallets', JSON.stringify(updatedList))
+        const newDetails = data.walletsDetailed
+        setWalletDetails(newDetails)
+        localStorage.setItem('noble_wallets', JSON.stringify(newDetails))
         toast.success(`Primary Airdrop wallet updated.`)
       } else { toast.error(data.error || "Update failed") }
     } catch (e) { console.error(e); toast.error("Failed to sign request") } finally { setIsSettingPrimary(false) }
   }
 
+  // --- IMPROVED FUNCTION: Uses new consolidated endpoint ---
   const handleUnlinkWallet = async (walletToRemove: string) => {
     if (!confirm(`Unlink ${walletToRemove.slice(0, 6)}...?`)) return;
     setIsUnlinking(true);
@@ -304,10 +326,11 @@ export default function Portal() {
       });
       const data = await res.json();
       if (res.ok) {
-        const newList = walletDetails.filter(w => w.address !== walletToRemove)
-        localStorage.setItem('noble_wallets', JSON.stringify(newList))
-        setWalletDetails(newList)
-        setLinkedWallets(newList.map(w => w.address))
+        const newDetails = data.walletsDetailed || walletDetails.filter(w => w.address !== walletToRemove)
+        
+        localStorage.setItem('noble_wallets', JSON.stringify(newDetails))
+        setWalletDetails(newDetails)
+        setLinkedWallets(newDetails.map((w: any) => w.address))
         toast.success('Wallet unlinked.')
       } else { toast.error(data.error || 'Unlink failed') }
     } catch (err) { console.error(err); toast.error('Failed to unlink') } finally { setIsUnlinking(false) }
@@ -456,7 +479,7 @@ export default function Portal() {
         {showWalletList && (
           <div className="mb-8 bg-[#141416]/80 backdrop-blur-md border border-[#c5a059]/20 p-6 rounded-3xl animate-in fade-in slide-in-from-top-4">
             
-            {/* --- METAVERSE IDENTITY --- */}
+            {/* --- METAVERSE IDENTITY (IMPROVEMENT KEPT) --- */}
             <div className="mb-6 border-b border-white/5 pb-6">
                <div className="flex justify-between items-center mb-3">
                    <h3 className="text-xs font-bold text-[#c5a059] uppercase tracking-widest">Metaverse Identity</h3>
@@ -605,7 +628,7 @@ export default function Portal() {
                             </button>
                         )}
                     </div>
-                    {/* CUSTOM LOGIC FOR GALACTIC GECKOS */}
+                    {/* CUSTOM LOGIC FOR GALACTIC GECKOS (Immortal Sub-count) */}
                     {config.key === 'galacticGeckos' && (
                         <p className="text-[10px] font-bold text-gray-600 uppercase mt-1">
                             Immortal Geckos: <span className="text-gray-300">{totals.immortalGeckos}</span>
