@@ -35,6 +35,8 @@ const EXIT_PORTAL_Z = 30;
 // --- ZONES (FIXED TYPES) ---
 const PORTAL_AREA_OFFSET: [number, number, number] = [120, 0, 50]; 
 const COMMUNITY_AREA_OFFSET: [number, number, number] = [-120, 0, 50]; 
+// New Zone: IRL Art Gallery (Opposite Main Hall)
+const ART_GALLERY_OFFSET: [number, number, number] = [0, 0, 140]; 
 const HENGE_RADIUS = 40;                
 const PORTAL_TRIGGER_DIST = 5.0;
 
@@ -50,7 +52,7 @@ const cleanUrl = (url: string) => {
 };
 
 // --- SAFE TEXTURE LOADER ---
-function SafeImageMaterial({ url }: { url: string }) {
+function SafeImageMaterial({ url, opacity = 1, transparent = false }: { url: string, opacity?: number, transparent?: boolean }) {
     const [texture, setTexture] = useState<THREE.Texture | null>(null);
 
     useEffect(() => {
@@ -66,7 +68,7 @@ function SafeImageMaterial({ url }: { url: string }) {
     }, [url]);
 
     if (!texture) return <meshBasicMaterial color="#333" />;
-    return <meshBasicMaterial map={texture} transparent={true} side={THREE.DoubleSide} />;
+    return <meshBasicMaterial map={texture} transparent={transparent} opacity={opacity} side={THREE.DoubleSide} />;
 }
 
 // --- ARCHITECTURAL COMPONENTS ---
@@ -290,10 +292,11 @@ function CommunityPlaza({ position }: { position: [number, number, number] }) {
     )
 }
 
-// 10. GRAND WALKWAY
+// 10. GRAND WALKWAY (UPDATED)
 function GrandWalkway() {
     return (
         <group>
+            {/* Main Path to Portals */}
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.15, 32.5]} receiveShadow>
                 <planeGeometry args={[24, 35]} /> 
                 <MeshReflectorMaterial blur={[0, 0]} resolution={512} mixBlur={0} mixStrength={30} roughness={0.4} depthScale={0} minDepthThreshold={0.9} maxDepthThreshold={1} color="#0a0a0a" metalness={0.5} mirror={0.5} />
@@ -301,11 +304,13 @@ function GrandWalkway() {
             <Box args={[0.5, 0.5, 35]} position={[-12, 0, 32.5]}><meshStandardMaterial color="#DAA520" metalness={0.8} /></Box>
             <Box args={[0.5, 0.5, 35]} position={[12, 0, 32.5]}><meshStandardMaterial color="#DAA520" metalness={0.8} /></Box>
 
+            {/* Central Hub Area */}
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.15, 50]} receiveShadow>
                 <planeGeometry args={[24, 24]} />
                 <MeshReflectorMaterial blur={[0, 0]} resolution={512} mixBlur={0} mixStrength={30} roughness={0.4} depthScale={0} minDepthThreshold={0.9} maxDepthThreshold={1} color="#0a0a0a" metalness={0.5} mirror={0.5} />
             </mesh>
 
+            {/* Side Path Left */}
             <group position={[60, 0, 50]}>
                 <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-34, -0.15, 0]} receiveShadow>
                     <planeGeometry args={[28, 24]} />
@@ -321,6 +326,7 @@ function GrandWalkway() {
                 <Box args={[40, 0.55, 0.55]} position={[0, 0, -12]}><meshStandardMaterial color="#333" roughness={0.9} /></Box>
             </group>
 
+            {/* Side Path Right */}
             <group position={[-60, 0, 50]}>
                 <mesh rotation={[-Math.PI / 2, 0, 0]} position={[10, -0.15, 0]} receiveShadow>
                     <planeGeometry args={[100, 24]} />
@@ -330,6 +336,13 @@ function GrandWalkway() {
                 <Box args={[100, 0.5, 0.5]} position={[10, 0, -12]}><meshStandardMaterial color="#DAA520" metalness={0.8} /></Box>
             </group>
 
+            {/* NEW: Path Extension to IRL Gallery */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.15, 100]} receiveShadow>
+                <planeGeometry args={[24, 100]} /> 
+                <MeshReflectorMaterial blur={[0, 0]} resolution={512} mixBlur={0} mixStrength={30} roughness={0.4} depthScale={0} minDepthThreshold={0.9} maxDepthThreshold={1} color="#0a0a0a" metalness={0.5} mirror={0.5} />
+            </mesh>
+
+            {/* Decor */}
             <FlowerPlanter position={[-14, 0, 25]} />
             <FlowerPlanter position={[14, 0, 25]} />
             <FlowerPlanter position={[-14, 0, 50]} /> 
@@ -376,7 +389,111 @@ function PortalHenge({ publicGalleries, position }: any) {
     )
 }
 
-// 12. MAIN HALL
+// 12. NEW COMPONENT: INTERACTIVE ART FRAME (Clickable)
+function InteractiveFrame({ url, label, price, link, position, rotation }: any) {
+    const [hovered, setHover] = useState(false)
+    
+    return (
+        <group position={position} rotation={rotation}
+            onPointerOver={() => setHover(true)}
+            onPointerOut={() => setHover(false)}
+            onClick={() => {
+                if(link) {
+                    window.open(link, '_blank');
+                    toast.success(`Opening ${label || 'Artwork'} on Marketplace...`);
+                } else {
+                    toast.info("Coming soon to Magic Eden");
+                }
+            }}
+        >
+            <Box args={[9, 12, 0.5]} castShadow>
+                <meshStandardMaterial color={hovered ? "#ffd700" : "#111"} metalness={0.8} roughness={0.2} />
+            </Box>
+            <mesh position={[0, 0, 0.26]}>
+                <planeGeometry args={[8, 11]} />
+                <SafeImageMaterial url={cleanUrl(url)} />
+            </mesh>
+            <group position={[0, -7, 0]}>
+                <Box args={[8, 2, 0.2]}><meshStandardMaterial color="#000" /></Box>
+                <Suspense fallback={null}>
+                    <Text position={[0, 0.4, 0.11]} fontSize={0.6} color="white" font="/ROMEO.TTF" anchorX="center">{label?.toUpperCase()}</Text>
+                    <Text position={[0, -0.4, 0.11]} fontSize={0.5} color="#DAA520" anchorX="center">{price}</Text>
+                </Suspense>
+            </group>
+        </group>
+    )
+}
+
+// 13. NEW COMPONENT: IRL ART GALLERY
+function IRLArtGallery({ position }: { position: [number, number, number] }) {
+    // PLACEHOLDER DATA: Replace these URLs and Links with your real ones
+    const artPieces = [
+        { id: 1, name: "Abstract Genesis", price: "5 SOL", image: "/ntwrk-logo.png", link: "https://magiceden.io" },
+        { id: 2, name: "Neon Dreams", price: "8 SOL", image: "/ntwrk-logo.png", link: "https://magiceden.io" },
+        { id: 3, name: "Golden Era", price: "12 SOL", image: "/ntwrk-logo.png", link: "https://magiceden.io" },
+    ];
+
+    return (
+        <group position={position}>
+            {/* Floor */}
+            <mesh rotation={[-Math.PI/2, 0, 0]} position={[0, 0.1, 0]}>
+                <boxGeometry args={[50, 30, 0.5]} />
+                <meshStandardMaterial color="#1a1a1a" roughness={0.1} metalness={0.8} />
+            </mesh>
+
+            {/* Roof */}
+            <Box args={[54, 34, 1]} position={[0, 15, 0]}>
+                <meshStandardMaterial color="#000" roughness={0.2} />
+            </Box>
+            <Box args={[52, 32, 0.5]} position={[0, 14.5, 0]}>
+                <meshStandardMaterial color="#DAA520" emissive="#DAA520" emissiveIntensity={0.2} />
+            </Box>
+
+            {/* Pillars */}
+            <Cylinder args={[1, 1, 15, 8]} position={[-24, 7.5, 14]}><meshStandardMaterial color="#333" /></Cylinder>
+            <Cylinder args={[1, 1, 15, 8]} position={[24, 7.5, 14]}><meshStandardMaterial color="#333" /></Cylinder>
+            <Cylinder args={[1, 1, 15, 8]} position={[-24, 7.5, -14]}><meshStandardMaterial color="#333" /></Cylinder>
+            <Cylinder args={[1, 1, 15, 8]} position={[24, 7.5, -14]}><meshStandardMaterial color="#333" /></Cylinder>
+
+            {/* Back Wall (North) */}
+            <Box args={[50, 15, 1]} position={[0, 7.5, 14.5]}>
+                <meshStandardMaterial color="#050505" roughness={0.5} />
+            </Box>
+
+            {/* Signage */}
+            <Suspense fallback={null}>
+                <Text position={[0, 16.5, 16]} fontSize={2.5} color="white" font="/ROMEO.TTF" anchorX="center" rotation={[0, Math.PI, 0]}>
+                    NOBLE FINE ART
+                </Text>
+            </Suspense>
+
+            {/* Center Piece */}
+            <InteractiveFrame 
+                {...artPieces[0]} 
+                position={[0, 7, 13.5]} 
+                rotation={[0, Math.PI, 0]} 
+            />
+
+            {/* Side Piece Left */}
+            <InteractiveFrame 
+                {...artPieces[1]} 
+                position={[15, 7, 13.5]} 
+                rotation={[0, Math.PI - 0.3, 0]} 
+            />
+
+            {/* Side Piece Right */}
+            <InteractiveFrame 
+                {...artPieces[2]} 
+                position={[-15, 7, 13.5]} 
+                rotation={[0, Math.PI + 0.3, 0]} 
+            />
+
+            <pointLight position={[0, 12, 0]} intensity={50} distance={40} color="#fff" />
+        </group>
+    )
+}
+
+// 14. MAIN HALL (Unchanged)
 function MainHall({ items, title, variant = 'gallery' }: { items: any[], title: string, variant?: 'hub' | 'gallery' }) {
     const isHub = variant === 'hub';
     const floorColor = isHub ? "#050505" : "#1a1a1a";
@@ -467,7 +584,7 @@ function NFTFrame({ url, label, frameColor = 'black' }: { url: string, label?: s
   );
 }
 
-// 13. COLLISION MANAGER (UPDATED WITH ASSET CHECKS)
+// 15. COLLISION MANAGER
 function CollisionManager({ publicGalleries, onEnterGallery, onExitGallery, onEnterCommunity, mode, playerPosRef }: any) {
     const cooldown = useRef(0)
     const [linkedWallets, setLinkedWallets] = useState<string[]>([])
@@ -481,7 +598,6 @@ function CollisionManager({ publicGalleries, onEnterGallery, onExitGallery, onEn
         
         const totals = holdings.reduce((acc: any, curr: any) => ({
             sensei: acc.sensei + (curr.sensei || 0),
-            // Count BOTH Galactic Geckos AND Immortal Geckos for access
             gecko: acc.gecko + (curr.galacticGeckos || 0) + (curr.immortalGecko || 0)
         }), { sensei: 0, gecko: 0 });
         
@@ -580,7 +696,7 @@ export default function Scene({
 }: any) {
   const startPos = useMemo<[number, number, number]>(() => [(Math.random() * 10) - 5, 5, 10], []); 
   
-  // 1. FIX: Memoize community spawn so it doesn't change on re-renders
+  // FIX: Memoize community spawn so it doesn't change on re-renders
   const communitySpawn = useMemo<[number, number, number]>(() => [0, 2, 20], []);
 
   const playerPosRef = useRef(new THREE.Vector3(...startPos));
@@ -608,7 +724,6 @@ export default function Scene({
                 <SpatialAudio />
 
                 <VoxelPlayer 
-                    // 2. USE FIXED REFERENCE
                     teleportPos={(mode === 'gecko' || mode === 'panda') ? communitySpawn : startPos} 
                     teleportRot={(mode === 'panda' || mode === 'gecko') ? 0 : Math.PI}
                     onPosUpdate={(pos) => playerPosRef.current.copy(pos)} 
@@ -640,6 +755,10 @@ export default function Scene({
                         <GrandWalkway />
                         <PortalHenge publicGalleries={publicGalleries} position={PORTAL_AREA_OFFSET} />
                         <CommunityPlaza position={COMMUNITY_AREA_OFFSET} />
+                        
+                        {/* --- NEW ART GALLERY (Opposite Main Hall) --- */}
+                        <IRLArtGallery position={ART_GALLERY_OFFSET} />
+
                         <ambientLight intensity={0.5} color="#cddeff" />
                         <directionalLight position={[100, 150, 50]} intensity={3} color="#ffebc2" castShadow shadow-mapSize={[2048, 2048]} />
                     </group>

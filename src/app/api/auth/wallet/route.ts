@@ -6,10 +6,10 @@ import base from 'base-x'
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 const bs58 = (typeof base === 'function' ? base : (base as any).default)(ALPHABET)
 
-// POST: Login or Link New Wallet
+// POST: Login or Link New Wallet (Updated with Merge Logic)
 export async function POST(req: Request) {
   try {
-    const { address, signature, message, linkToUserId } = await req.json()
+    const { address, signature, message, linkToUserId, merge } = await req.json()
 
     // 1. Verify Signature
     const isValid = nacl.sign.detached.verify(
@@ -20,8 +20,35 @@ export async function POST(req: Request) {
     if (!isValid) return NextResponse.json({ error: 'Invalid signature proof' }, { status: 401 })
 
     let user;
+    
     if (linkToUserId) {
-      // LINKING: Connect to existing user
+      // --- LINKING FLOW ---
+      
+      // A. Check if wallet is already claimed by ANOTHER user
+      const existingWallet = await prisma.wallet.findUnique({ where: { address } });
+      
+      if (existingWallet && existingWallet.userId !== linkToUserId) {
+          // CONFLICT DETECTED
+          if (!merge) {
+              return NextResponse.json({ 
+                  error: 'This wallet is already linked to another profile.', 
+                  code: 'WALLET_CONFLICT',
+                  conflictUserId: existingWallet.userId
+              }, { status: 409 }); // 409 Conflict Status
+          }
+
+          // B. MERGE LOGIC (If user confirmed)
+          // Move ALL wallets from the old user (existingWallet.userId) to the current user (linkToUserId)
+          await prisma.wallet.updateMany({
+              where: { userId: existingWallet.userId },
+              data: { userId: linkToUserId }
+          });
+          
+          // Note: We do not delete the old user record here to preserve history, 
+          // but they will effectively be an empty shell with no wallets.
+      }
+
+      // C. Perform the Link (or ensure connection after merge)
       user = await prisma.user.update({
         where: { id: linkToUserId },
         data: {
@@ -31,8 +58,9 @@ export async function POST(req: Request) {
         },
         include: { wallets: true }
       });
+
     } else {
-      // LOGIN: Find or create user
+      // --- LOGIN FLOW ---
       const walletRecord = await prisma.wallet.findUnique({
         where: { address },
         include: { user: { include: { wallets: true } } }
@@ -46,11 +74,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ userId: user.id, walletsDetailed: user.wallets })
   } catch (error) {
+    console.error("Auth Error:", error)
     return NextResponse.json({ error: 'Operation failed' }, { status: 500 })
   }
 }
 
-// PATCH: Set Primary Wallet (Replaces your set-primary route)
+// PATCH: Set Primary Wallet
 export async function PATCH(req: Request) {
   try {
     const { userId, address } = await req.json()
@@ -99,7 +128,6 @@ export async function DELETE(req: Request) {
     if (!wallet) return NextResponse.json({ error: 'Wallet not found' }, { status: 404 })
 
     // 2. Security Check: Make sure they aren't deleting someone else's wallet
-    // (We cast to any because your strict schema implies userId exists on wallet)
     if ((wallet as any).userId !== userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
@@ -109,8 +137,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'Cannot unlink your Primary wallet. Set a different Primary first.' }, { status: 400 })
     }
 
-    // 4. THE FIX: Delete the WALLET only. 
-    // This removes it from the User's list. It does NOT delete the User.
+    // 4. Delete the WALLET only.
     await prisma.wallet.delete({
       where: { address }
     })

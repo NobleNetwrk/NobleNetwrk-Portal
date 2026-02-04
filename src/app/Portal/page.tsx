@@ -59,7 +59,7 @@ export default function Portal() {
   const [showHodlBreakdown, setShowHodlBreakdown] = useState(false);
   const [expandedCollection, setExpandedCollection] = useState<string | null>(null);
 
-  // --- ASSET CONFIGURATION (Logic from VPS, Styling from Gold Theme) ---
+  // --- ASSET CONFIGURATION ---
   const assetConfig = [
     { 
       key: 'solanaK9s', label: 'Solana K9', icon: '/solana-k9s-icon.png', color: 'blue', action: 'K9Impound', actionLabel: 'Impound',
@@ -107,7 +107,7 @@ export default function Portal() {
     },
   ];
 
-  // --- TOTALS CALCULATION (Strict Logic from VPS Code) ---
+  // --- TOTALS CALCULATION ---
   const totals = useMemo(() => {
     const initial = {
       sol: 0, ntwrk: 0, genetics: 0, extracts: 0, namaste: 0, solanaK9s: 0,
@@ -129,7 +129,6 @@ export default function Portal() {
       tso: acc.tso + curr.tso,
       d3fenders: acc.d3fenders + curr.d3fenders,
       stonedApeCrew: acc.stonedApeCrew + curr.stonedApeCrew,
-      // Verified Logic: Acc.plural + Curr.singular (matches AssetHoldings interface)
       immortalGeckos: acc.immortalGeckos + curr.immortalGecko, 
       timeTravelingChimps: acc.timeTravelingChimps + (curr.timeTravelingChimps || 0),
       player1: acc.player1 + (curr.player1 || 0),
@@ -216,7 +215,6 @@ export default function Portal() {
 
   const groupedAssets = getBreakdown();
 
-  // --- IMPROVED FUNCTION: Uses new consolidated endpoint ---
   const handleSaveUsername = async () => {
     if (!userId) return toast.error("Please login first");
     if (!username || username.length < 3) return toast.error("Username must be at least 3 characters");
@@ -243,9 +241,10 @@ export default function Portal() {
     }
   };
 
-  // --- IMPROVED FUNCTION: Uses new consolidated endpoint ---
-  const handleLinkWallet = async () => {
+  // --- UPDATED LINK FUNCTION WITH MERGE LOGIC ---
+  const handleLinkWallet = async (forceMerge = false) => {
     if (!publicKey || !signMessage || !userId) return toast.error("Please login first.")
+    
     setIsLinking(true)
     try {
       const message = `Link Wallet to NobleNetwrk\nWallet: ${publicKey.toBase58()}\nTS: ${new Date().getTime()}`
@@ -258,33 +257,43 @@ export default function Portal() {
           address: publicKey.toBase58(),
           signature: base58.encode(signature),
           message,
-          linkToUserId: userId 
+          linkToUserId: userId,
+          merge: forceMerge // Pass merge flag on recursion
         })
       })
       
       const data = await res.json()
+
+      // --- CONFLICT HANDLING ---
+      if (res.status === 409) {
+          if (confirm("⚠️ Wallet Conflict Detected\n\nThis wallet is already connected to another user profile.\n\nDo you want to MERGE these profiles? This will move all assets/wallets from that profile to this one.")) {
+              await handleLinkWallet(true); // Recursive call with merge=true
+          } else {
+              toast.info("Linking cancelled.");
+          }
+          setIsLinking(false);
+          return;
+      }
+      
       if (res.ok) {
-        // Handle both detailed and simple array responses for robustness
         const newDetails = data.walletsDetailed || data.wallets?.map((w:string) => ({ address: w, isPrimary: false })) || []
         
         localStorage.setItem('noble_wallets', JSON.stringify(newDetails))
         setWalletDetails(newDetails)
         setLinkedWallets(newDetails.map((w: any) => w.address))
         
-        // If it's a new login, store the user ID
         if (data.userId) {
             setUserId(data.userId);
             localStorage.setItem('noble_userId', data.userId);
         }
         
-        toast.success('Wallet linked successfully!')
+        toast.success(forceMerge ? 'Profiles Merged Successfully!' : 'Wallet linked successfully!')
       } else {
         toast.error(data.error || 'Link failed')
       }
     } catch (err) { console.error(err); toast.error('Link Error') } finally { setIsLinking(false) }
   }
 
-  // --- IMPROVED FUNCTION: Uses new consolidated endpoint ---
   const handleSetPrimary = async (targetWallet: string) => {
     if (!publicKey || !signMessage || !userId) return
     setIsSettingPrimary(true)
@@ -314,7 +323,6 @@ export default function Portal() {
     } catch (e) { console.error(e); toast.error("Failed to sign request") } finally { setIsSettingPrimary(false) }
   }
 
-  // --- IMPROVED FUNCTION: Uses new consolidated endpoint ---
   const handleUnlinkWallet = async (walletToRemove: string) => {
     if (!confirm(`Unlink ${walletToRemove.slice(0, 6)}...?`)) return;
     setIsUnlinking(true);
@@ -459,12 +467,15 @@ export default function Portal() {
                         <button onClick={() => router.push('/AirdropTool')} className="w-full text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:bg-[#c5a059]/10 hover:text-[#c5a059] transition-colors">
                             Airdrop Tool
                         </button>
+                        <button onClick={() => router.push('/Solanaverse')} className="w-full text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:bg-[#c5a059]/10 hover:text-[#c5a059] transition-colors">
+                            Solanaverse
+                        </button>
                     </div>
                 </div>
             </div>
             
             {needsLinking ? (
-              <button onClick={handleLinkWallet} disabled={isLinking} className="bg-[#c5a059] hover:bg-[#e4c98c] text-black px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest animate-pulse shadow-lg shadow-[#c5a059]/20">{isLinking ? 'Linking...' : '+ Link This Wallet'}</button>
+              <button onClick={() => handleLinkWallet(false)} disabled={isLinking} className="bg-[#c5a059] hover:bg-[#e4c98c] text-black px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest animate-pulse shadow-lg shadow-[#c5a059]/20">{isLinking ? 'Linking...' : '+ Link This Wallet'}</button>
             ) : (
               <div className="px-4 py-3 bg-[#141416] border border-[#c5a059]/30 rounded-2xl"><span className="text-[#c5a059] text-[10px] font-black uppercase tracking-widest">✓ Wallet Linked</span></div>
             )}
@@ -479,7 +490,7 @@ export default function Portal() {
         {showWalletList && (
           <div className="mb-8 bg-[#141416]/80 backdrop-blur-md border border-[#c5a059]/20 p-6 rounded-3xl animate-in fade-in slide-in-from-top-4">
             
-            {/* --- METAVERSE IDENTITY (IMPROVEMENT KEPT) --- */}
+            {/* --- METAVERSE IDENTITY --- */}
             <div className="mb-6 border-b border-white/5 pb-6">
                <div className="flex justify-between items-center mb-3">
                    <h3 className="text-xs font-bold text-[#c5a059] uppercase tracking-widest">Metaverse Identity</h3>

@@ -26,6 +26,11 @@ const ROTATION_SPEED = 1.5
 const CAMERA_DISTANCE = 4.0 
 const CAMERA_HEIGHT = 2.0   
 
+// --- GAMEPAD HELPER (NEW) ---
+const applyDeadzone = (value: number, threshold = 0.15) => {
+  return Math.abs(value) > threshold ? value : 0;
+};
+
 // --- VOXEL HELPER ---
 function Voxel({ x, y, z, color, scale = 0.06 }: { x: number, y: number, z: number, color: string, scale?: number }) {
   return (
@@ -41,7 +46,6 @@ function Voxel({ x, y, z, color, scale = 0.06 }: { x: number, y: number, z: numb
 }
 
 // --- ANIMATION HELPER ---
-// Standardizes the limb swinging math for bipeds
 function useBipedAnim(speedRef: React.MutableRefObject<number>) {
   const leftLeg = useRef<THREE.Group>(null);
   const rightLeg = useRef<THREE.Group>(null);
@@ -50,26 +54,19 @@ function useBipedAnim(speedRef: React.MutableRefObject<number>) {
   const bodyGroup = useRef<THREE.Group>(null);
 
   useFrame((state) => {
-    const t = state.clock.elapsedTime * 15; // Animation frequency
-    const speed = Math.min(speedRef.current, 1.5); // Clamp visual speed
+    const t = state.clock.elapsedTime * 15; 
+    const speed = Math.min(speedRef.current, 1.5); 
     
-    // Apply rotations if moving
     if (speed > 0.1) {
-        // Legs (Sine wave based on time)
         if(leftLeg.current) leftLeg.current.rotation.x = Math.sin(t) * 0.8 * speed;
         if(rightLeg.current) rightLeg.current.rotation.x = Math.sin(t + Math.PI) * 0.8 * speed;
-        
-        // Arms (Opposite to legs)
         if(leftArm.current) leftArm.current.rotation.x = Math.sin(t + Math.PI) * 0.6 * speed;
         if(rightArm.current) rightArm.current.rotation.x = Math.sin(t) * 0.6 * speed;
-        
-        // Slight body bounce/roll
         if(bodyGroup.current) {
             bodyGroup.current.position.y = 0.8 + Math.abs(Math.sin(t*2)) * 0.05 * speed;
             bodyGroup.current.rotation.z = Math.sin(t) * 0.05 * speed;
         }
     } else {
-        // Reset to idle
         if(leftLeg.current) leftLeg.current.rotation.x = THREE.MathUtils.lerp(leftLeg.current.rotation.x, 0, 0.1);
         if(rightLeg.current) rightLeg.current.rotation.x = THREE.MathUtils.lerp(rightLeg.current.rotation.x, 0, 0.1);
         if(leftArm.current) leftArm.current.rotation.x = THREE.MathUtils.lerp(leftArm.current.rotation.x, 0, 0.1);
@@ -243,6 +240,7 @@ function AvatarGoldenPanda({ pitchRef, speedRef }: { pitchRef: React.MutableRefO
     </group>
   )
 }
+
 // 4. GALACTIC GECKO AVATAR (ARTICULATED)
 function AvatarGalacticGecko({ pitchRef, speedRef }: { pitchRef: React.MutableRefObject<number>, speedRef: React.MutableRefObject<number> }) {
   const s = 0.05; 
@@ -503,15 +501,46 @@ export default function VoxelPlayer({
             return;
         }
 
+        // ===============================================
+        // === GLOBAL INPUT HANDLING (PSG1 / GAMEPAD) ===
+        // ===============================================
+        // We poll gamepads here so values are available for BOTH Selfie & Normal modes
+        
+        let gpLookX = 0, gpLookY = 0, gpMoveX = 0, gpMoveY = 0;
+        let gpSprint = false;
+
+        const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+        const gp = Array.from(gamepads).find(g => g && g.connected);
+
+        if (gp) {
+            // Map Axes (Standard Layout)
+            // 0: Left Stick X, 1: Left Stick Y
+            // 2: Right Stick X, 3: Right Stick Y
+            gpMoveX = applyDeadzone(gp.axes[0]);
+            gpMoveY = applyDeadzone(gp.axes[1]);
+            gpLookX = applyDeadzone(gp.axes[2]);
+            gpLookY = applyDeadzone(gp.axes[3]);
+
+            // Map Sprint (Button 1=B, Button 5=RB usually)
+            if (gp.buttons[1]?.pressed || gp.buttons[5]?.pressed) {
+                gpSprint = true;
+            }
+        }
+
         // --- SPLIT LOGIC BASED ON MODE ---
         if (isSelfieMode) {
             // === SELFIE MODE CONTROLS ===
             animationSpeedRef.current = 0; // No walking in selfie mode
 
+            // KEYBOARD
             if (keys.current['ArrowLeft']) selfieOrbit.current.yaw += 2.0 * delta;
             if (keys.current['ArrowRight']) selfieOrbit.current.yaw -= 2.0 * delta;
             if (keys.current['ArrowUp']) selfieOrbit.current.height += 2.0 * delta;
             if (keys.current['ArrowDown']) selfieOrbit.current.height -= 2.0 * delta;
+
+            // GAMEPAD (PSG1) - Add joystick input to selfie orbit
+            selfieOrbit.current.yaw += gpLookX * 2.0 * delta;
+            selfieOrbit.current.height += gpLookY * 2.0 * delta; // Up pushes camera up
             
             // Clamp Height
             selfieOrbit.current.height = Math.max(0.5, Math.min(3.5, selfieOrbit.current.height));
@@ -540,39 +569,40 @@ export default function VoxelPlayer({
             camera.lookAt(headPos);
 
         } else {
-            // === NORMAL MODE CONTROLS ===
+            // ===============================================
+            // === NORMAL MODE CONTROLS (INCL. GAMEPAD) ===
+            // ===============================================
             
-            // === NORMAL MODE CONTROLS ===
-            
-            // 1. ROTATION (Add Keyboard + Mobile Look)
+            // 1. ROTATION (Add Keyboard + Mobile Look + Gamepad)
             // Note: Mobile X rotates Yaw, Mobile Y rotates Pitch
-            const joyLookX = mobileInput?.current.look.x || 0;
-            const joyLookY = mobileInput?.current.look.y || 0;
+            const joyLookX = (mobileInput?.current.look.x || 0) + gpLookX;
+            const joyLookY = (mobileInput?.current.look.y || 0) + gpLookY;
 
             if (keys.current['ArrowLeft']) rotation.current.yaw += ROTATION_SPEED * delta
             if (keys.current['ArrowRight']) rotation.current.yaw -= ROTATION_SPEED * delta
             
-            // Add Mobile Yaw
-            rotation.current.yaw -= joyLookX * ROTATION_SPEED * delta * 1.5; // Multiplier for sensitivity
+            // Add Joystick Yaw (Multiplier for sensitivity)
+            rotation.current.yaw -= joyLookX * ROTATION_SPEED * delta * 1.5; 
 
             if (keys.current['ArrowUp']) rotation.current.pitch += ROTATION_SPEED * delta
             if (keys.current['ArrowDown']) rotation.current.pitch -= ROTATION_SPEED * delta
             
-            // Add Mobile Pitch
-            rotation.current.pitch += joyLookY * ROTATION_SPEED * delta * 1.5;
+            // Add Joystick Pitch
+            // FIX: INVERTED LOOK (Subtracted instead of added to flip vertical axis)
+            rotation.current.pitch -= joyLookY * ROTATION_SPEED * delta * 1.5;
 
             rotation.current.pitch = Math.max(-0.5, Math.min(0.5, rotation.current.pitch))
             pitchRef.current = rotation.current.pitch;
 
-            // 2. MOVEMENT (Add Keyboard + Mobile Move)
-            const isSprinting = keys.current['ShiftLeft'] || keys.current['ShiftRight']
+            // 2. MOVEMENT (Add Keyboard + Mobile Move + Gamepad)
+            const isSprinting = keys.current['ShiftLeft'] || keys.current['ShiftRight'] || gpSprint;
             const speed = (isSprinting ? SPRINT_SPEED : WALK_SPEED) * delta
 
             // Combine Keyboard (0 or 1) with Joystick (-1 to 1)
-            const joyMoveY = mobileInput?.current.move.y || 0;
-            const joyMoveX = mobileInput?.current.move.x || 0;
+            const joyMoveY = (mobileInput?.current.move.y || 0) + gpMoveY;
+            const joyMoveX = (mobileInput?.current.move.x || 0) + gpMoveX;
 
-            const forward = (keys.current['KeyW'] ? 1 : 0) - (keys.current['KeyS'] ? 1 : 0) + joyMoveY;
+            const forward = (keys.current['KeyW'] ? 1 : 0) - (keys.current['KeyS'] ? 1 : 0) - joyMoveY;
             const side = (keys.current['KeyD'] ? 1 : 0) - (keys.current['KeyA'] ? 1 : 0) + joyMoveX;
 
             const moveDir = new THREE.Vector3(side, 0, -forward).normalize()
@@ -589,8 +619,6 @@ export default function VoxelPlayer({
 
             avatarRef.current.position.copy(playerPos.current)
             avatarRef.current.rotation.y = rotation.current.yaw
-            
-            // REMOVED: Old "Bob" logic. The individual avatars now handle the bounce for more realism.
             
             // Normal Camera Follow (Third Person)
             const offset = new THREE.Vector3(0, 0, CAMERA_DISTANCE)
@@ -618,8 +646,6 @@ export default function VoxelPlayer({
     }
   })
 
-
-  
   const AvatarComponent = AVATAR_REGISTRY[avatarId] || AVATAR_REGISTRY['human'];
 
   return (
