@@ -34,6 +34,7 @@
     "@react-three/drei": "^9.99.0",
     "@react-three/fiber": "^8.15.16",
     "@react-three/postprocessing": "^2.16.0",
+    "@react-three/rapier": "^2.2.0",
     "@solana-mobile/wallet-standard-mobile": "^0.4.4",
     "@solana/spl-token": "^0.4.14",
     "@solana/spl-token-metadata": "^0.1.6",

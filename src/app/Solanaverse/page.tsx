@@ -1,14 +1,17 @@
 "use client"
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
+import { useRouter } from 'next/navigation'
 import '@solana/wallet-adapter-react-ui/styles.css'
 import dynamic from 'next/dynamic'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import GalleryBuilder from '@/components/solanaverse/GalleryBuilder'
+import IRLGalleryBuilder from '@/components/solanaverse/IRLGalleryBuilder'
 import AvatarSelector from '@/components/solanaverse/AvatarSelector'
 import AdminAvatarDashboard from '@/components/solanaverse/AdminAvatarDashboard'
 import MobileControls from '@/components/solanaverse/MobileControls'
 import React from 'react'
+import { toast } from 'react-toastify'
 
 // --- 1. HASHLIST IMPORTS ---
 import { K9_HASHLIST } from '@/config/k9hashlist' 
@@ -41,6 +44,7 @@ const SolanaverseScene = dynamic(() => import('@/components/solanaverse/Scene'),
 // --- CONFIGURATION ---
 const ADMIN_WALLETS = (process.env.NEXT_PUBLIC_ADMIN_WALLETS || '').split(',')
 const CENTRAL_HALL_ID = "CENTRAL_HALL" 
+const IRL_GALLERY_ID = "IRL_GALLERY_OFFICIAL" 
 
 interface RawNFT { id: string; name: string; image: string; collection: string; }
 interface PublicGallery { id: string; owner: string; name: string; assetCount: number; isPublic?: boolean; assets: RawNFT[]; }
@@ -48,16 +52,19 @@ interface PublicGallery { id: string; owner: string; name: string; assetCount: n
 type ViewMode = 'hall' | 'gallery' | 'gecko' | 'panda';
 
 export default function SolanaversePage() {
-  const { publicKey, connected } = useWallet()
+  const { publicKey, connected, connecting } = useWallet()
+  const router = useRouter()
   
   // --- STATE ---
   const [loading, setLoading] = useState(false)
+  const [accessGranted, setAccessGranted] = useState(false) 
   const [myNfts, setMyNfts] = useState<RawNFT[]>([]) 
   const [adminNfts, setAdminNfts] = useState<RawNFT[]>([]) 
   const [publicGalleries, setPublicGalleries] = useState<PublicGallery[]>([]) 
   
   const [userGalleryData, setUserGalleryData] = useState<PublicGallery | null>(null) 
   const [centralHallData, setCentralHallData] = useState<PublicGallery | null>(null)
+  const [irlItems, setIrlItems] = useState<any[]>([])
 
   const [viewMode, setViewMode] = useState<ViewMode>('hall')
   const [activeGalleryName, setActiveGalleryName] = useState<string>("") 
@@ -77,11 +84,103 @@ export default function SolanaversePage() {
   const [isProfileLoading, setIsProfileLoading] = useState(false)
 
   const [isSelfieMode, setIsSelfieMode] = useState(false);
-  
-  // --- NEW: CHAT VISIBILITY STATE ---
   const [isChatOpen, setIsChatOpen] = useState(false); 
 
-  // --- MOBILE INPUT REF ---
+  // --- GAME PERSISTENCE STATE ---
+  const [showArcade, setShowArcade] = useState(false); 
+  const [userXP, setUserXP] = useState(0);
+  const [userLevel, setUserLevel] = useState(1);
+  const [collectedItems, setCollectedItems] = useState<string[]>([]);
+
+  // ---------------------------------------------------------
+  // 1. STRICT ACCESS CONTROL (FIXED)
+  // ---------------------------------------------------------
+  useEffect(() => {
+      // If we are already verified, do nothing.
+      if (accessGranted) return;
+
+      // If wallet says connected, grant access immediately.
+      if (connected) {
+          setAccessGranted(true);
+          return;
+      }
+
+      // If currently trying to connect, just wait.
+      if (connecting) return;
+
+      // Only start the "Kick" timer if we are !connected AND !connecting
+      const checkTimer = setTimeout(() => {
+          if (!connected) {
+              toast.error("⛔ Access Denied: Wallet Required");
+              router.push('/'); // FIXED: Redirect to Landing Page "/"
+          }
+      }, 2000); // 2 second buffer for auto-connect
+
+      return () => clearTimeout(checkTimer);
+  }, [connected, connecting, router, accessGranted]);
+
+
+  // 2. Calculate Level
+  useEffect(() => {
+      const newLevel = 1 + Math.floor(userXP / 100);
+      if (newLevel > userLevel) {
+          toast.success(`🎉 LEVEL UP! You are now Level ${newLevel}`);
+          setUserLevel(newLevel);
+      }
+  }, [userXP]);
+
+  // 3. Helper to Save Progress to DB
+  const saveProgress = async (xp: number, level: number, items: string[]) => {
+      if (!userId) return; 
+
+      try {
+          const res = await fetch('/api/game/progress', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId, xp, level, collectedItems: items })
+          });
+          
+          if (!res.ok) {
+            console.error("Save failed");
+          }
+      } catch (e) { console.error("Failed to save progress", e); }
+  };
+
+  // 4. Add XP Action
+  const addXP = (amount: number) => {
+      const newXP = userXP + amount;
+      setUserXP(newXP);
+      const newLevel = 1 + Math.floor(newXP / 100);
+      saveProgress(newXP, newLevel, collectedItems);
+  };
+
+  // 5. Collect Item Action
+  const handleCollectItem = (itemId: string) => {
+      if (!collectedItems.includes(itemId)) {
+          const newItems = [...collectedItems, itemId];
+          setCollectedItems(newItems);
+          
+          const newXP = userXP + 50;
+          setUserXP(newXP);
+          const newLevel = 1 + Math.floor(newXP / 100);
+
+          if (userId) {
+              saveProgress(newXP, newLevel, newItems);
+          } else {
+              toast.warn("⚠️ Syncing profile...");
+          }
+      }
+  };
+
+  // 6. SYNC ON LOGIN
+  // This ensures that if you login with ANY wallet linked to your User ID,
+  // the game state is consistent.
+  useEffect(() => {
+      if (userId && collectedItems.length > 0) {
+          saveProgress(userXP, userLevel, collectedItems);
+      }
+  }, [userId]);
+
   const mobileInputRef = useRef({ move: { x: 0, y: 0 }, look: { x: 0, y: 0 } });
 
   const HASHLISTS = useMemo(() => ({
@@ -96,7 +195,6 @@ export default function SolanaversePage() {
     'Galactic Geckos': new Set(galacticGeckoHashlist),
   }), []);
 
-  // ... (Helpers kept as is) ...
   const fixSenseiUrl = (url: string) => {
     if (!url) return "/ntwrk-logo.png";
     if (url.includes("sensei.launchifi.xyz") && url.includes("/gif/")) {
@@ -127,7 +225,6 @@ export default function SolanaversePage() {
     return fixSenseiUrl(defaultImg);
   }
 
-  // --- ACTIONS ---
   const handleAvatarSelect = async (newAvatarId: string) => {
       setAvatarId(newAvatarId); 
       if (userId) {
@@ -156,13 +253,20 @@ export default function SolanaversePage() {
       if (type === 'look') mobileInputRef.current.look = { x, y };
   };
 
-  // --- INITIAL LOAD ---
+  useEffect(() => {
+    const nav = document.querySelector('nav');
+    if (nav) nav.style.display = 'none'; 
+    return () => { if (nav) nav.style.display = 'flex'; };
+  }, []);
+
   useEffect(() => {
     fetch('/api/gallery/list')
         .then(r => r.json())
         .then(d => { 
             if(d.galleries) {
-                const onlyUserGalleries = d.galleries.filter((g: PublicGallery) => g.owner !== CENTRAL_HALL_ID);
+                const onlyUserGalleries = d.galleries.filter((g: PublicGallery) => 
+                    g.owner !== CENTRAL_HALL_ID && g.owner !== IRL_GALLERY_ID
+                );
                 setPublicGalleries(onlyUserGalleries)
             }
         })
@@ -175,6 +279,12 @@ export default function SolanaversePage() {
             setActiveSceneData(cleanAssets) 
         }
     })
+
+    fetch('/api/admin/irl-gallery').then(r => r.json()).then(d => {
+        if (d.success && d.items) {
+            setIrlItems(d.items); 
+        }
+    }).catch(e => console.error("Failed to load IRL gallery", e));
 
     if (connected && publicKey) {
         setIsProfileLoading(true);
@@ -201,6 +311,7 @@ export default function SolanaversePage() {
                     const res = await fetch(`/api/user/profile?wallet=${wallet}`);
                     if (res.ok) {
                         const data = await res.json();
+                        // This ID is the Master User ID
                         const id = data.user?.id || data.id || data.data?.id; 
                         
                         if (data.user?.equippedAvatar) savedAvatar = data.user.equippedAvatar;
@@ -221,7 +332,22 @@ export default function SolanaversePage() {
                         const cleanAssets = d.gallery.assets.map((a: any) => ({...a, image: fixSenseiUrl(a.image)}));
                         setUserGalleryData({...d.gallery, assets: cleanAssets})
                     }
-                })
+                });
+
+                // --- FETCH PERSISTENT GAME DATA ---
+                // This fetches data linked to the User ID, not just the current wallet
+                fetch(`/api/game/progress?userId=${foundId}`)
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d.success && d.profile) {
+                            if (d.profile.collectedItems.length >= collectedItems.length) {
+                                setUserXP(d.profile.xp);
+                                setUserLevel(d.profile.level);
+                                setCollectedItems(d.profile.collectedItems);
+                            }
+                        }
+                    })
+                    .catch(e => console.error("Game load error", e));
             }
             setIsProfileLoading(false);
         };
@@ -260,9 +386,12 @@ export default function SolanaversePage() {
     } catch (e) { console.error("Fetch error", e); }
   }
 
-  const openBuilder = (mode: 'PERSONAL' | 'CENTRAL') => {
+  const openBuilder = (mode: 'PERSONAL' | 'CENTRAL' | 'IRL') => {
       if (mode === 'CENTRAL') {
           setBuilderTargetId(CENTRAL_HALL_ID)
+          setShowBuilder(true)
+      } else if (mode === 'IRL') {
+          setBuilderTargetId(IRL_GALLERY_ID)
           setShowBuilder(true)
       } else {
           if (!userId) {
@@ -285,6 +414,7 @@ export default function SolanaversePage() {
             setActiveGalleryName(data.gallery.name || "User Gallery") 
             setViewMode('gallery')
             setCurrentRoomId(`gallery-${ownerId}`)
+            addXP(10); 
         }
     } catch (e) { console.error(e) }
     setLoading(false)
@@ -293,6 +423,7 @@ export default function SolanaversePage() {
   const handleEnterCommunity = (type: 'gecko' | 'panda') => {
       setViewMode(type); 
       setCurrentRoomId(`community-${type}`); 
+      addXP(15); 
   }
 
   const handleExitGallery = () => {
@@ -300,6 +431,18 @@ export default function SolanaversePage() {
     setViewMode('hall')
     setActiveGalleryName("")
     setCurrentRoomId("solanaverse-central-hall")
+  }
+
+  // --- ACCESS BLOCKER ---
+  if (!accessGranted) {
+      return (
+          <div className="h-screen bg-black flex flex-col items-center justify-center gap-4">
+              <LoadingSpinner size="lg" />
+              <div className="text-white font-mono text-sm animate-pulse uppercase tracking-widest">
+                  Verifying Identity...
+              </div>
+          </div>
+      );
   }
 
   if (loading) return <div className="h-screen bg-black flex items-center justify-center"><LoadingSpinner size="lg" /></div>
@@ -316,23 +459,45 @@ export default function SolanaversePage() {
   }
 
   return (
-    // FIX: Using 'fixed' with explicit offsets to break out of layout.tsx constraints
-    // top-[81px] accounts for the sticky header height (approx 81px)
-    <div className="fixed left-0 right-0 bottom-0 top-[81px] bg-black overflow-hidden touch-none z-0">
+    <div className="fixed inset-0 bg-black overflow-hidden touch-none z-0">
         
-        {/* --- MOBILE CONTROLS --- */}
-        {!isSelfieMode && !showBuilder && !showAvatarSelector && (
+        {/* --- ARCADE OVERLAY --- */}
+        {showArcade && (
+            <div className="absolute inset-0 z-[100] bg-black flex flex-col">
+                <div className="h-12 bg-[#111] border-b border-green-500/50 flex justify-between items-center px-6">
+                    <span className="text-green-400 font-bold font-mono tracking-widest animate-pulse">Running: PORTAL_HUNTER.exe</span>
+                    <button 
+                        onClick={() => setShowArcade(false)}
+                        className="text-white bg-red-600 hover:bg-red-500 px-4 py-1 rounded text-xs font-bold uppercase"
+                    >
+                        Exit Arcade [ESC]
+                    </button>
+                </div>
+                <iframe 
+                    src="https://huntingportals.com/" 
+                    className="flex-1 w-full border-none focus:outline-none"
+                    allow="gamepad; fullscreen; accelerometer; gyroscope"
+                />
+            </div>
+        )}
+
+        {!isSelfieMode && !showBuilder && !showAvatarSelector && !showArcade && (
             <MobileControls onInput={handleMobileInput} />
         )}
 
+        {/* --- DYNAMIC BUILDER RENDERER --- */}
         {showBuilder && publicKey && (
-            <GalleryBuilder 
-                myNfts={myNfts} 
-                walletAddress={publicKey.toBase58()} 
-                targetId={builderTargetId} 
-                onClose={() => setShowBuilder(false)}
-                existingGallery={builderTargetId === CENTRAL_HALL_ID ? centralHallData : userGalleryData} 
-            />
+            builderTargetId === IRL_GALLERY_ID ? (
+                <IRLGalleryBuilder myNfts={myNfts} onClose={() => setShowBuilder(false)} />
+            ) : (
+                <GalleryBuilder 
+                    myNfts={myNfts} 
+                    walletAddress={publicKey.toBase58()} 
+                    targetId={builderTargetId} 
+                    onClose={() => setShowBuilder(false)}
+                    existingGallery={builderTargetId === CENTRAL_HALL_ID ? centralHallData : userGalleryData} 
+                />
+            )
         )}
 
         {showAvatarSelector && (
@@ -345,82 +510,107 @@ export default function SolanaversePage() {
             />
         )}
 
-        {showAdminDashboard && (
-            <AdminAvatarDashboard onClose={() => setShowAdminDashboard(false)} />
-        )}
+        {showAdminDashboard && <AdminAvatarDashboard onClose={() => setShowAdminDashboard(false)} />}
 
         {/* --- HUD --- */}
-        <div className="absolute inset-0 z-40 pointer-events-none p-8 flex flex-col justify-between">
-            {!isSelfieMode ? (
-                <div className="flex justify-between items-start w-full pointer-events-auto transition-opacity duration-300">
-                    <div>
-                        <h1 className="text-4xl font-black text-white italic drop-shadow-lg uppercase">
-                            {getPageTitle()}
-                        </h1>
-                        <p className="text-purple-400 font-bold uppercase tracking-widest text-xs mb-2">
-                            {viewMode === 'hall' ? 'Explore the Portals' : 'Immersive Experience'}
-                        </p>
+        {!showArcade && (
+            <div className="absolute inset-0 z-40 pointer-events-none p-4 md:p-6 flex flex-col justify-between">
+                {!isSelfieMode ? (
+                    <div className="w-full pointer-events-auto transition-opacity duration-300">
                         
-                        <div className="bg-black/40 backdrop-blur-md p-2 rounded-lg border border-white/10 hidden md:inline-block">
-                            <p className="text-[10px] text-gray-300 font-mono uppercase">
-                                🎮 <b>WASD</b> to Walk • <b>ARROWS</b> to Look
-                            </p>
-                        </div>
-
-                        <div className="mt-4 flex gap-3 flex-wrap">
-                            {viewMode !== 'hall' && (
-                                <button onClick={handleExitGallery} className="bg-white/10 border border-white/20 backdrop-blur-md text-white px-4 py-2 rounded-lg font-bold hover:bg-white/20 transition-all uppercase text-xs">⬅ Return to Hall</button>
-                            )}
-
-                            {connected && (
-                                <>
-                                    <button onClick={() => setShowAvatarSelector(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow-lg hover:bg-blue-500 transition-all uppercase text-xs">👤 Avatar</button>
-                                    <button onClick={() => setIsSelfieMode(true)} className="bg-pink-600 text-white px-4 py-2 rounded-lg font-bold shadow-lg hover:bg-pink-500 transition-all uppercase text-xs">📸 Selfie</button>
-                                    
+                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                            {/* LEFT: Title & Controls */}
+                            <div className="flex flex-col gap-4">
+                                <div className="flex items-center gap-4">
                                     <button 
-                                        onClick={() => setIsChatOpen(!isChatOpen)} 
-                                        className={`${isChatOpen ? 'bg-green-600 hover:bg-green-500' : 'bg-gray-700 hover:bg-gray-600'} text-white px-4 py-2 rounded-lg font-bold shadow-lg transition-all uppercase text-xs border border-white/20`}
+                                        onClick={() => router.push('/Portal')}
+                                        className="w-10 h-10 flex items-center justify-center bg-white/5 hover:bg-white/10 border border-white/10 rounded-full transition-all group backdrop-blur-md"
+                                        title="Exit Solanaverse"
                                     >
-                                        💬 {isChatOpen ? 'Hide Chat' : 'Chat'}
+                                        <svg className="w-5 h-5 text-gray-400 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                                        </svg>
                                     </button>
 
-                                    <button 
-                                        onClick={() => openBuilder('PERSONAL')} 
-                                        className={`text-white px-4 py-2 rounded-lg font-bold shadow-lg transition-all uppercase text-xs ${(!userId || isProfileLoading) ? 'bg-gray-600 cursor-not-allowed opacity-50' : 'bg-purple-600 hover:bg-purple-500'}`}
-                                        disabled={!userId || isProfileLoading}
-                                    >
-                                        {isProfileLoading ? 'Fetching...' : (!userId ? 'No Profile' : (userGalleryData ? '✎ Edit My Gallery' : '+ Create Gallery'))}
-                                    </button>
-                                    {isAdmin && (
+                                    <div>
+                                        <h1 className="text-2xl md:text-4xl font-black text-white italic drop-shadow-lg uppercase leading-none">{getPageTitle()}</h1>
+                                        
+                                        {/* XP / LEVEL BAR */}
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <div className="bg-black/60 border border-purple-500/30 rounded px-2 py-0.5 flex items-center gap-2">
+                                                <span className="text-[10px] text-purple-400 font-bold">LVL {userLevel}</span>
+                                                <div className="w-20 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-gradient-to-r from-purple-500 to-pink-500" style={{ width: `${(userXP % 100)}%` }} />
+                                                </div>
+                                            </div>
+                                            <div className="text-[9px] text-yellow-400 font-mono">
+                                                {collectedItems.length}/5 Disks
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-2 flex-wrap">
+                                    {viewMode !== 'hall' && (
+                                        <button onClick={handleExitGallery} className="bg-white/10 border border-white/20 backdrop-blur-md text-white px-3 py-1.5 rounded-lg font-bold hover:bg-white/20 transition-all uppercase text-[10px]">⬅ Hall</button>
+                                    )}
+
+                                    {connected && (
                                         <>
-                                            <button onClick={() => openBuilder('CENTRAL')} className="bg-yellow-600 text-white px-4 py-2 rounded-lg font-bold shadow-lg hover:bg-yellow-500 transition-all uppercase text-xs border border-yellow-400/50">👑 Curate Hall</button>
-                                            <button onClick={() => setShowAdminDashboard(true)} className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold shadow-lg hover:bg-red-500 transition-all uppercase text-xs border border-red-400/50">👑 Requests</button>
+                                            <button onClick={() => setShowAvatarSelector(true)} className="bg-blue-600/80 hover:bg-blue-500 backdrop-blur-md text-white px-3 py-1.5 rounded-lg font-bold shadow-lg transition-all uppercase text-[10px]">👤 Avatar</button>
+                                            <button onClick={() => setIsSelfieMode(true)} className="bg-pink-600/80 hover:bg-pink-500 backdrop-blur-md text-white px-3 py-1.5 rounded-lg font-bold shadow-lg transition-all uppercase text-[10px]">📸 Selfie</button>
+                                            
+                                            <button 
+                                                onClick={() => setIsChatOpen(!isChatOpen)} 
+                                                className={`${isChatOpen ? 'bg-green-600 hover:bg-green-500' : 'bg-gray-700/80 hover:bg-gray-600'} backdrop-blur-md text-white px-3 py-1.5 rounded-lg font-bold shadow-lg transition-all uppercase text-[10px] border border-white/10`}
+                                            >
+                                                💬 {isChatOpen ? 'Hide Chat' : 'Chat'}
+                                            </button>
+
+                                            <button 
+                                                onClick={() => openBuilder('PERSONAL')} 
+                                                className={`text-white px-3 py-1.5 rounded-lg font-bold shadow-lg transition-all uppercase text-[10px] backdrop-blur-md ${(!userId || isProfileLoading) ? 'bg-gray-600/50 cursor-not-allowed opacity-50' : 'bg-purple-600/80 hover:bg-purple-500'}`}
+                                                disabled={!userId || isProfileLoading}
+                                            >
+                                                {isProfileLoading ? '...' : (!userId ? 'No Profile' : (userGalleryData ? '✎ Gallery' : '+ Create'))}
+                                            </button>
+                                            
+                                            {isAdmin && (
+                                                <>
+                                                    <button onClick={() => openBuilder('CENTRAL')} className="bg-yellow-600/80 text-white px-3 py-1.5 rounded-lg font-bold shadow-lg hover:bg-yellow-500 transition-all uppercase text-[10px] border border-yellow-400/30">👑 Hall</button>
+                                                    <button onClick={() => openBuilder('IRL')} className="bg-emerald-600/80 text-white px-3 py-1.5 rounded-lg font-bold shadow-lg hover:bg-emerald-500 transition-all uppercase text-[10px] border border-emerald-400/30">🎨 IRL</button>
+                                                    <button onClick={() => setShowAdminDashboard(true)} className="bg-red-600/80 text-white px-3 py-1.5 rounded-lg font-bold shadow-lg hover:bg-red-500 transition-all uppercase text-[10px] border border-red-400/30">👑 Req</button>
+                                                </>
+                                            )}
                                         </>
                                     )}
-                                </>
-                            )}
+                                </div>
+                            </div>
+
+                            {/* RIGHT: Wallet */}
+                            <div className="flex flex-col items-end gap-2">
+                                <div className="pointer-events-auto"><WalletMultiButton className="!bg-purple-600 hover:!bg-purple-500 !font-bold !rounded-lg !h-10 !text-xs" /></div>
+                            </div>
                         </div>
                     </div>
-                    <div className="pointer-events-auto"><WalletMultiButton className="!bg-purple-600 hover:!bg-purple-500 !font-bold !rounded-lg" /></div>
-                </div>
-            ) : (
-                <div className="w-full flex justify-between items-start pointer-events-auto">
-                    <div className="bg-black/50 p-2 rounded text-white text-xs backdrop-blur-md">📸 <b>SELFIE MODE</b></div>
-                    <button onClick={() => setIsSelfieMode(false)} className="bg-white/10 text-white px-4 py-2 rounded-full font-bold hover:bg-white/20">✕ Close</button>
-                </div>
-            )}
+                ) : (
+                    <div className="w-full flex justify-between items-start pointer-events-auto">
+                        <div className="bg-black/50 p-2 rounded text-white text-xs backdrop-blur-md">📸 <b>SELFIE MODE</b></div>
+                        <button onClick={() => setIsSelfieMode(false)} className="bg-white/10 text-white px-4 py-2 rounded-full font-bold hover:bg-white/20">✕ Close</button>
+                    </div>
+                )}
 
-            {isSelfieMode && (
-                <div className="w-full flex justify-center pb-8 pointer-events-auto">
-                    <button onClick={handleScreenshot} className="w-16 h-16 bg-white rounded-full border-4 border-gray-300 shadow-2xl hover:scale-110 transition-transform flex items-center justify-center group">
-                        <div className="w-12 h-12 bg-transparent border-2 border-black/20 rounded-full group-hover:bg-gray-100" />
-                    </button>
+                <div className="pointer-events-auto flex justify-center items-end pb-4">
+                    {isSelfieMode && (
+                        <button onClick={handleScreenshot} className="w-16 h-16 bg-white rounded-full border-4 border-gray-300 shadow-2xl hover:scale-110 transition-transform flex items-center justify-center group">
+                            <div className="w-12 h-12 bg-transparent border-2 border-black/20 rounded-full group-hover:bg-gray-100" />
+                        </button>
+                    )}
                 </div>
-            )}
-        </div>
+            </div>
+        )}
 
-        {/* --- CANVAS CONTAINER (Absolute, not Fixed) --- */}
-        {/* Changed from fixed to absolute so it respects the top-[81px] parent constraint */}
+        {/* 3D SCENE CONTAINER */}
         <div className="absolute inset-0 z-0">
             <RoomProvider 
                 id={currentRoomId} 
@@ -442,11 +632,17 @@ export default function SolanaversePage() {
                                 galleryTitle={activeGalleryName}
                                 username={username}
                                 mobileInput={mobileInputRef} 
+                                irlData={irlItems}
+                                
+                                // Gamification Props
+                                showArcade={showArcade}
+                                setShowArcade={setShowArcade}
+                                collectedItems={collectedItems}
+                                onCollectItem={handleCollectItem}
                             />
                             
-                            {/* --- CHAT WITH VISIBILITY TOGGLE --- */}
-                            {!isSelfieMode && (
-                                <div className={`absolute bottom-8 left-8 z-50 transition-opacity duration-300 ${isChatOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+                            {!isSelfieMode && !showArcade && (
+                                <div className={`absolute bottom-24 left-8 z-50 transition-opacity duration-300 ${isChatOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
                                     <Chat />
                                 </div>
                             )}

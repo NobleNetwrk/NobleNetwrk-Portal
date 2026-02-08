@@ -1,6 +1,7 @@
 "use client"
 import React, { useState, useEffect, useMemo } from 'react'
 import { Box, Cylinder, MeshReflectorMaterial, Text, Float, Dodecahedron, useGLTF } from '@react-three/drei'
+import { RigidBody, CuboidCollider } from '@react-three/rapier' // <--- IMPORT PHYSICS
 import * as THREE from 'three'
 
 // --- TEXTURE LOADER COMPONENT ---
@@ -54,60 +55,76 @@ export default function GeckoGarage({ onExit }: { onExit: () => void }) {
       <pointLight position={[0, 20, 0]} intensity={200} color="#00ff00" distance={40} />
 
       {/* --- FLOOR (Industrial Grid) --- */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]}>
-        <planeGeometry args={[60, 60]} />
-        <MeshReflectorMaterial
-          blur={[300, 100]}
-          resolution={1024}
-          mixBlur={1}
-          mixStrength={40}
-          roughness={0.6}
-          depthScale={1.2}
-          minDepthThreshold={0.4}
-          maxDepthThreshold={1.4}
-          color="#1a1a1a"
-          metalness={0.8}
-          mirror={0.5} 
-        />
-      </mesh>
+      <RigidBody type="fixed" colliders="cuboid">
+          {/* Visual Floor */}
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]}>
+            <planeGeometry args={[60, 60]} />
+            <MeshReflectorMaterial
+              blur={[300, 100]}
+              resolution={1024}
+              mixBlur={1}
+              mixStrength={40}
+              roughness={0.6}
+              depthScale={1.2}
+              minDepthThreshold={0.4}
+              maxDepthThreshold={1.4}
+              color="#1a1a1a"
+              metalness={0.8}
+              mirror={0.5} 
+            />
+          </mesh>
+          {/* Physics Floor */}
+          <CuboidCollider args={[30, 0.5, 30]} position={[0, -0.6, 0]} />
+      </RigidBody>
 
       {/* --- WALLS (Cyberpunk Hexagons) --- */}
-      <group>
+      <RigidBody type="fixed" colliders="cuboid">
         <Box args={[60, 30, 2]} position={[0, 15, -30]}><meshStandardMaterial color="#111" metalness={0.9} roughness={0.1} /></Box>
         <Box args={[2, 30, 60]} position={[-30, 15, 0]}><meshStandardMaterial color="#111" metalness={0.9} roughness={0.1} /></Box>
         <Box args={[2, 30, 60]} position={[30, 15, 0]}><meshStandardMaterial color="#111" metalness={0.9} roughness={0.1} /></Box>
-      </group>
+      </RigidBody>
 
       {/* --- DECOR: FLOATING GECKO CRYSTALS --- */}
+      {/* Wrapped in RigidBody but kinematic or fixed if they don't move physically */}
       <Float speed={2} rotationIntensity={0.5} floatIntensity={1}>
-        <Dodecahedron args={[3]} position={[-15, 10, -15]}>
-            <meshStandardMaterial color="#00ff00" wireframe />
-        </Dodecahedron>
+        <RigidBody type="fixed" colliders="hull">
+            <Dodecahedron args={[3]} position={[-15, 10, -15]}>
+                <meshStandardMaterial color="#00ff00" wireframe />
+            </Dodecahedron>
+        </RigidBody>
       </Float>
       <Float speed={1.5} rotationIntensity={0.5} floatIntensity={1}>
-        <Dodecahedron args={[3]} position={[15, 8, -10]}>
-            <meshStandardMaterial color="#00ff00" wireframe />
-        </Dodecahedron>
+        <RigidBody type="fixed" colliders="hull">
+            <Dodecahedron args={[3]} position={[15, 8, -10]}>
+                <meshStandardMaterial color="#00ff00" wireframe />
+            </Dodecahedron>
+        </RigidBody>
       </Float>
 
       {/* --- CENTERPIECE: THE GARAGE PLATFORM --- */}
-      <Cylinder args={[8, 9, 2, 6]} position={[0, 1, 0]}><meshStandardMaterial color="#222" metalness={0.8} /></Cylinder>
-      <Cylinder args={[7, 7, 0.5, 32]} position={[0, 2.1, 0]}><meshStandardMaterial color="#00ff00" emissive="#00ff00" emissiveIntensity={2} /></Cylinder>
+      <RigidBody type="fixed" colliders="hull">
+          <Cylinder args={[8, 9, 2, 6]} position={[0, 1, 0]}><meshStandardMaterial color="#222" metalness={0.8} /></Cylinder>
+          <Cylinder args={[7, 7, 0.5, 32]} position={[0, 2.1, 0]}><meshStandardMaterial color="#00ff00" emissive="#00ff00" emissiveIntensity={2} /></Cylinder>
+      </RigidBody>
 
-      {/* --- NEW: LOUNGE AREA (Using your GLB) --- */}
-      {/* Chair 1: Left of platform */}
-      <ArmchairModel 
-        position={[-12, 0, 0]} 
-        rotation={[0, Math.PI / 4, 0]} 
-        scale={2.5} 
-      />
+      {/* --- NEW: LOUNGE AREA (Solid Furniture) --- */}
+      <RigidBody type="fixed" colliders="hull">
+          {/* Chair 1: Left of platform */}
+          <ArmchairModel 
+            position={[-12, 0, 0]} 
+            rotation={[0, Math.PI / 4, 0]} 
+            scale={2.5} 
+          />
+      </RigidBody>
       
-      {/* Chair 2: Right of platform */}
-      <ArmchairModel 
-        position={[12, 0, 0]} 
-        rotation={[0, -Math.PI / 4, 0]} 
-        scale={2.5} 
-      />
+      <RigidBody type="fixed" colliders="hull">
+          {/* Chair 2: Right of platform */}
+          <ArmchairModel 
+            position={[12, 0, 0]} 
+            rotation={[0, -Math.PI / 4, 0]} 
+            scale={2.5} 
+          />
+      </RigidBody>
 
       {/* --- TITLE --- */}
       <Text position={[0, 20, -28]} fontSize={4} color="#00ff00" font="/ROMEO.TTF" anchorX="center" anchorY="middle">
@@ -128,12 +145,14 @@ export default function GeckoGarage({ onExit }: { onExit: () => void }) {
       </group>
 
       {/* --- EXIT PORTAL --- */}
-      <group position={[0, 0, 25]} onClick={onExit}>
-        <Cylinder args={[3, 3, 0.5, 32]} rotation={[Math.PI/2, 0, 0]} position={[0, 5, 0]}>
-            <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={2} />
-        </Cylinder>
-        <Text position={[0, 8, 0]} fontSize={1} color="white">EXIT TO HALL</Text>
-      </group>
+      <RigidBody type="fixed" colliders="hull">
+          <group position={[0, 0, 25]} onClick={onExit}>
+            <Cylinder args={[3, 3, 0.5, 32]} rotation={[Math.PI/2, 0, 0]} position={[0, 5, 0]}>
+                <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={2} />
+            </Cylinder>
+            <Text position={[0, 8, 0]} fontSize={1} color="white">EXIT TO HALL</Text>
+          </group>
+      </RigidBody>
     </group>
   )
 }

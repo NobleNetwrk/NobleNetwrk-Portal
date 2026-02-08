@@ -1,0 +1,150 @@
+/* src/app/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* The Noble Palette */
+  --noble-gold: #c5a059;
+  --noble-gold-dark: #927035;
+  --noble-black: #0a0a0b; 
+  --noble-gray: #1a1a1c;
+}
+
+body {
+  background-color: var(--noble-black);
+  color: #ffffff;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Glassmorphism Effect - Updated for darker contrast */
+.glass {
+  background: rgba(10, 10, 11, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* --- SOLANA WALLET ADAPTER OVERRIDES (GOLD THEME) --- */
+
+/* The main "Connect Wallet" button */
+.wallet-adapter-button {
+  background: linear-gradient(135deg, #c5a059 0%, #927035 100%) !important;
+  color: #000000 !important; /* Black text for contrast on gold */
+  height: 48px !important;
+  padding-left: 2rem !important;
+  padding-right: 2rem !important;
+  border-radius: 0.75rem !important; /* rounded-xl */
+  font-weight: 900 !important;
+  font-size: 0.875rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.1em !important;
+  transition: all 0.3s ease !important;
+  box-shadow: 0 10px 20px -5px rgba(197, 160, 89, 0.3) !important;
+  border: none !important;
+}
+
+.wallet-adapter-button:hover {
+  filter: brightness(1.15) !important;
+  transform: scale(1.02) !important;
+}
+
+.wallet-adapter-button:active {
+  transform: scale(0.98) !important;
+}
+
+/* The Modal (Pop-up when you click connect) */
+.wallet-adapter-modal-wrapper {
+  background-color: #141416 !important; /* Slightly lighter black */
+  border-radius: 2.5rem !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  padding: 2rem !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+}
+
+.wallet-adapter-modal-title {
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  font-size: 1.5rem !important;
+  letter-spacing: -0.02em !important;
+}
+
+.wallet-adapter-modal-list {
+  margin-bottom: 0 !important;
+}
+
+/* The individual wallet options inside the modal */
+.wallet-adapter-modal-list .wallet-adapter-button {
+  background: rgba(255, 255, 255, 0.05) !important;
+  margin-bottom: 0.75rem !important;
+  box-shadow: none !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  justify-content: flex-start !important; /* Align left */
+}
+
+.wallet-adapter-modal-list .wallet-adapter-button:hover {
+  background: rgba(197, 160, 89, 0.2) !important; /* Gold tint on hover */
+  border: 1px solid rgba(197, 160, 89, 0.5) !important;
+}
+
+/* Close button inside modal */
+.wallet-adapter-modal-button-close {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Custom Scrollbar - Gold Accent */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #c5a059; /* Gold on hover */
+}
+
+/* src/app/globals.css */
+
+/* ... (previous styles) ... */
+
+/* --- FORCE HIDE LIVEBLOCKS BADGE (AGGRESSIVE) --- */
+
+/* 1. Target by Link URL (Most reliable) */
+a[href*="liveblocks.io"] {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    z-index: -9999 !important;
+}
+
+/* 2. Target by ID and common Class names */
+#liveblocks-badge,
+.lb-root,
+.lb-badge,
+.lb-portal {
+    display: none !important;
+}
+
+/* 3. Target by Attribute Wildcard (Catches dynamic classes) */
+div[class*="liveblocks-badge"],
+div[class*="lb-badge"] {
+    display: none !important;
+}
+
+/* 4. Target SVG internals if wrapper resists */
+svg[class*="liveblocks"] {
+    display: none !important;
+}

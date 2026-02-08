@@ -15,12 +15,27 @@ model User {
   wallets         Wallet[]
   isApproved      Boolean         @default(false)
   airdropProfile  AirdropProfile? 
+  gameProfile     GameProfile?    
   hodlScore       Int             @default(0)
   hodlLastUpdated DateTime?
   unlockedAvatars String[]        @default(["alien"])
   requests        AvatarRequest[]
   equippedAvatar  String          @default("alien")
   username        String?         @unique
+}
+
+// --- NEW GAMING MODEL ---
+model GameProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  xp             Int      @default(0)
+  level          Int      @default(1)
+  collectedItems String[] @default([]) 
+  
+  lastSavedAt    DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model AirdropProfile {
@@ -66,8 +81,8 @@ model LockedK9 {
 model SystemSettings {
   key         String   @id @unique // e.g., "k9_impound_payout"
   value       String   // e.g., "100000"
-  description String?  // e.g., "Payout amount for K9s"
-  updatedBy   String?  // The wallet address of the admin who changed it
+  description String?
+  updatedBy   String?
   updatedAt   DateTime @updatedAt
 }
 
@@ -77,6 +92,19 @@ model Announcement {
   content   String
   date      DateTime @default(now())
   isActive  Boolean  @default(true)
+}
+
+model IrlGalleryItem {
+  id          String   @id @default(cuid())
+  position    String   @unique // "center", "left", "right"
+  name        String
+  image       String
+  description String?
+  price       String?  // e.g. "50 SOL"
+  isSold      Boolean  @default(false)
+  link        String?  // Magic Eden link
+  nftMint     String?  // Optional: The mint address if it's an NFT
+  updatedAt   DateTime @updatedAt
 }
 
 model UserGallery {
