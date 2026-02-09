@@ -13,6 +13,7 @@ const JUMP_FORCE = 12
 const ROTATION_SPEED = 1.5 
 const CAMERA_DISTANCE = 10.0 
 const CAMERA_HEIGHT = 7.0   
+const MAX_JUMPS = 2 // Double Jump Enabled
 
 const applyDeadzone = (value: number, threshold = 0.15) => Math.abs(value) > threshold ? value : 0;
 
@@ -314,6 +315,7 @@ interface VoxelPlayerProps {
   isSelfieMode?: boolean; 
   username?: string | null;
   mobileInput?: React.MutableRefObject<{ move: { x: number, y: number }, look: { x: number, y: number } }>;
+  inputEnabled?: boolean; // New prop
 }
 
 export default function VoxelPlayer({ 
@@ -327,7 +329,8 @@ export default function VoxelPlayer({
   remotePitch,
   isSelfieMode = false,
   username ,
-  mobileInput
+  mobileInput,
+  inputEnabled = true // Default true
 }: VoxelPlayerProps) {
   const { camera, gl } = useThree()
   const rapier = useRapier(); 
@@ -339,6 +342,7 @@ export default function VoxelPlayer({
   const pitchRef = useRef(0);
   const animationSpeedRef = useRef(0); 
   const isGrounded = useRef(false);
+  const jumpCount = useRef(0);
   
   const [presence, updateMyPresence] = !isRemote ? useMyPresence() : [null, null];
   const keys = useRef<Record<string, boolean>>({})
@@ -346,6 +350,7 @@ export default function VoxelPlayer({
   const rotation = useRef({ yaw: Math.PI, pitch: 0.1 }) 
   const selfieOrbit = useRef({ yaw: 0, height: 1.8 })
   const prevJumpBtn = useRef(false); 
+  const prevInteractBtn = useRef(false); // Ref to debounce interact
 
   // DEBUG HUD
   const debugTextRef = useRef<HTMLParagraphElement>(null);
@@ -368,7 +373,8 @@ export default function VoxelPlayer({
             rotation.current.pitch = Math.max(-0.5, Math.min(0.5, rotation.current.pitch));
         }
     }
-    const onClick = () => { if (!isSelfieMode) gl.domElement.requestPointerLock(); }
+    // Only allow requesting lock if input is enabled
+    const onClick = () => { if (!isSelfieMode && inputEnabled) gl.domElement.requestPointerLock(); }
 
     document.addEventListener('keydown', onKeyDown)
     document.addEventListener('keyup', onKeyUp)
@@ -381,7 +387,16 @@ export default function VoxelPlayer({
         document.removeEventListener('mousemove', onMouseMove);
         gl.domElement.removeEventListener('click', onClick);
     }
-  }, [isRemote, isSelfieMode, gl.domElement, mounted])
+  }, [isRemote, isSelfieMode, gl.domElement, mounted, inputEnabled])
+
+  // --- FORCE UNLOCK CURSOR WHEN INPUT DISABLED ---
+  useEffect(() => {
+      if (!inputEnabled && document.pointerLockElement) {
+          document.exitPointerLock();
+          // Clear keys so player stops moving if they were holding W
+          keys.current = {};
+      }
+  }, [inputEnabled]);
 
   // --- TELEPORT ON LOAD ---
   useEffect(() => {
@@ -421,43 +436,66 @@ export default function VoxelPlayer({
     }
 
     // --- MAIN LOCAL LOOP ---
+    // Gate input logic
+    const effectiveInputEnabled = inputEnabled && !isRemote;
+
     let gpLookX = 0, gpLookY = 0, gpMoveX = 0, gpMoveY = 0;
     let gpSprint = false;
 
     // --- GAMEPAD LOGIC (FIXED) ---
-    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-    const gp = Array.from(gamepads).find(g => g && g.connected);
+    // Only poll if input enabled
+    if (effectiveInputEnabled) {
+        const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+        const gp = Array.from(gamepads).find(g => g && g.connected);
 
-    if (gp) {
-        // Standard mapping: Left Stick (0,1), Right Stick (2,3)
-        gpMoveX = applyDeadzone(gp.axes[0]);
-        gpMoveY = -applyDeadzone(gp.axes[1]); // Invert Y
-        gpLookX = applyDeadzone(gp.axes[2]);
-        gpLookY = -applyDeadzone(gp.axes[3]); // Invert Y
+        if (gp) {
+            // Standard mapping: Left Stick (0,1), Right Stick (2,3)
+            gpMoveX = applyDeadzone(gp.axes[0]);
+            gpMoveY = -applyDeadzone(gp.axes[1]); // Invert Y
+            gpLookX = applyDeadzone(gp.axes[2]);
+            gpLookY = -applyDeadzone(gp.axes[3]); // Invert Y
 
-        // Sprint button (L3 or B/Circle)
-        if (gp.buttons[1]?.pressed || gp.buttons[10]?.pressed) gpSprint = true;
-        
-        // Jump button (A/Cross or LB)
-        const jumpPressed = gp.buttons[0]?.pressed || gp.buttons[4]?.pressed;
-        
-        // Physics Jump Logic
-        if (jumpPressed && !prevJumpBtn.current) {
-             if (isGrounded.current) {
-                 if(rigidBodyRef.current) {
-                     const linvel = rigidBodyRef.current.linvel();
-                     rigidBodyRef.current.setLinvel({ x: linvel.x, y: JUMP_FORCE, z: linvel.z }, true);
-                 }
-             }
+            // Sprint: R1 (Button 5)
+            if (gp.buttons[5]?.pressed) gpSprint = true;
+            
+            // Jump: B (Button 1)
+            const jumpPressed = gp.buttons[1]?.pressed;
+            
+            // Interact: A (Button 0)
+            const interactPressed = gp.buttons[0]?.pressed;
+            
+            // INTERACT LOGIC (Simulates 'E' key)
+            if (interactPressed && !prevInteractBtn.current) {
+                window.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', code: 'KeyE' }));
+            }
+            prevInteractBtn.current = interactPressed;
+
+            // JUMP LOGIC
+            if (jumpPressed && !prevJumpBtn.current) {
+                if (isGrounded.current) {
+                    if(rigidBodyRef.current) {
+                        const linvel = rigidBodyRef.current.linvel();
+                        rigidBodyRef.current.setLinvel({ x: linvel.x, y: JUMP_FORCE, z: linvel.z }, true);
+                    }
+                } else if (jumpCount.current < MAX_JUMPS) {
+                    // Double Jump
+                    if(rigidBodyRef.current) {
+                        const linvel = rigidBodyRef.current.linvel();
+                        rigidBodyRef.current.setLinvel({ x: linvel.x, y: JUMP_FORCE, z: linvel.z }, true);
+                        jumpCount.current += 1;
+                    }
+                }
+            }
+            prevJumpBtn.current = jumpPressed || false;
         }
-        prevJumpBtn.current = jumpPressed || false;
     }
 
-    const forward = (keys.current['KeyW'] ? 1 : 0) - (keys.current['KeyS'] ? 1 : 0) + (mobileInput?.current.move.y || 0) + gpMoveY;
-    const side = (keys.current['KeyD'] ? 1 : 0) - (keys.current['KeyA'] ? 1 : 0) + (mobileInput?.current.move.x || 0) + gpMoveX;
-    const isSprinting = keys.current['ShiftLeft'] || gpSprint;
+    // Calculate movement variables (Force 0 if input disabled)
+    const forward = effectiveInputEnabled ? ((keys.current['KeyW'] ? 1 : 0) - (keys.current['KeyS'] ? 1 : 0) + (mobileInput?.current.move.y || 0) + gpMoveY) : 0;
+    const side = effectiveInputEnabled ? ((keys.current['KeyD'] ? 1 : 0) - (keys.current['KeyA'] ? 1 : 0) + (mobileInput?.current.move.x || 0) + gpMoveX) : 0;
+    const isSprinting = effectiveInputEnabled ? (keys.current['ShiftLeft'] || gpSprint) : false;
     const currentSpeed = (isSprinting ? SPRINT_SPEED : WALK_SPEED);
-    const jump = keys.current['Space'];
+    const jump = effectiveInputEnabled ? keys.current['Space'] : false;
 
     const moveDir = new THREE.Vector3(side, 0, -forward).normalize();
     moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), rotation.current.yaw);
@@ -481,7 +519,12 @@ export default function VoxelPlayer({
         const targetVel = moveDir.multiplyScalar(currentSpeed);
         
         const isLanded = Math.abs(linvel.y) < 0.2; 
-        isGrounded.current = isLanded; // Update ref for avatars
+        if (isLanded) {
+            isGrounded.current = true;
+            jumpCount.current = 0; // Reset jumps on landing
+        } else {
+            isGrounded.current = false;
+        }
 
         // Jump (Keyboard)
         if (jump && isLanded) {
@@ -510,19 +553,21 @@ export default function VoxelPlayer({
     // 4. HUD
     if (debugTextRef.current && state.clock.elapsedTime - lastDebugUpdate.current > 0.1) {
         lastDebugUpdate.current = state.clock.elapsedTime;
-        const gpStatus = gp ? `GAMEPAD: ${gp.id.substring(0,10)}` : "NO GAMEPAD";
-        debugTextRef.current.innerText = `ENGINE: ${engineStatus} [ID:${rbHandle}]\nPOS: ${playerPos.current.x.toFixed(1)}, ${playerPos.current.y.toFixed(1)}\nINPUT: ${forward.toFixed(1)}|${side.toFixed(1)}\n${gpStatus}`;
+        //const gpStatus = gp ? `GAMEPAD: ${gp.id.substring(0,10)}` : "NO GAMEPAD";
+        debugTextRef.current.innerText = `ENGINE: ${engineStatus} [ID:${rbHandle}]\nPOS: ${playerPos.current.x.toFixed(1)}, ${playerPos.current.y.toFixed(1)}\nINPUT: ${forward.toFixed(1)}|${side.toFixed(1)}`;
         debugTextRef.current.style.color = engineStatus.includes("Attached") ? "lime" : "orange";
     }
 
     // 5. CAMERA & ROTATION LOGIC
     if (isSelfieMode) {
-        if (keys.current['ArrowLeft']) selfieOrbit.current.yaw += 2.0 * delta;
-        if (keys.current['ArrowRight']) selfieOrbit.current.yaw -= 2.0 * delta;
-        
-        // Gamepad Selfie Look
-        selfieOrbit.current.yaw += gpLookX * 2.0 * delta;
-        selfieOrbit.current.height += gpLookY * 2.0 * delta; 
+        if (effectiveInputEnabled) {
+            if (keys.current['ArrowLeft']) selfieOrbit.current.yaw += 2.0 * delta;
+            if (keys.current['ArrowRight']) selfieOrbit.current.yaw -= 2.0 * delta;
+            
+            // Gamepad Selfie Look
+            selfieOrbit.current.yaw += gpLookX * 2.0 * delta;
+            selfieOrbit.current.height += gpLookY * 2.0 * delta; 
+        }
 
         // ... (Selfie logic remains same)
         const dist = 5.5; 
@@ -538,24 +583,26 @@ export default function VoxelPlayer({
     } else {
         // === NORMAL MODE: Mouse + Arrows + Gamepad ===
         
-        // A. Arrow Keys Rotation (Restored Feature)
-        if (keys.current['ArrowLeft']) rotation.current.yaw += ROTATION_SPEED * delta;
-        if (keys.current['ArrowRight']) rotation.current.yaw -= ROTATION_SPEED * delta;
-        if (keys.current['ArrowUp']) rotation.current.pitch += ROTATION_SPEED * delta;
-        if (keys.current['ArrowDown']) rotation.current.pitch -= ROTATION_SPEED * delta;
+        if (effectiveInputEnabled) {
+            // A. Arrow Keys Rotation (Restored Feature)
+            if (keys.current['ArrowLeft']) rotation.current.yaw += ROTATION_SPEED * delta;
+            if (keys.current['ArrowRight']) rotation.current.yaw -= ROTATION_SPEED * delta;
+            if (keys.current['ArrowUp']) rotation.current.pitch += ROTATION_SPEED * delta;
+            if (keys.current['ArrowDown']) rotation.current.pitch -= ROTATION_SPEED * delta;
 
-        // B. Gamepad & Mobile Look
-        const joyLookX = (mobileInput?.current.look.x || 0) + gpLookX;
-        const joyLookY = (mobileInput?.current.look.y || 0) + gpLookY;
+            // B. Gamepad & Mobile Look
+            const joyLookX = (mobileInput?.current.look.x || 0) + gpLookX;
+            const joyLookY = (mobileInput?.current.look.y || 0) + gpLookY;
 
-        rotation.current.yaw -= joyLookX * ROTATION_SPEED * delta * 2.0; 
-        rotation.current.pitch += joyLookY * ROTATION_SPEED * delta * 2.0;
+            rotation.current.yaw -= joyLookX * ROTATION_SPEED * delta * 2.0; 
+            rotation.current.pitch += joyLookY * ROTATION_SPEED * delta * 2.0;
 
-        // B. Mouse Rotation (Already handled by event listener updating rotation.current)
-        
-        // Clamp Pitch
-        rotation.current.pitch = Math.max(-0.5, Math.min(0.5, rotation.current.pitch));
-        pitchRef.current = rotation.current.pitch;
+            // B. Mouse Rotation (Already handled by event listener updating rotation.current)
+            
+            // Clamp Pitch
+            rotation.current.pitch = Math.max(-0.5, Math.min(0.5, rotation.current.pitch));
+            pitchRef.current = rotation.current.pitch;
+        }
 
         // C. Camera Follow
         const offset = new THREE.Vector3(0, 0, CAMERA_DISTANCE);
@@ -594,23 +641,23 @@ export default function VoxelPlayer({
       )
   }
 
-  // Prevent Hydration Errors
-  if (!mounted) return null;
-
+  // Prevent Hydration Errors: Only render HTML overlays after mount
   return (
     <>
-        <Html position={[0,0,0]} zIndexRange={[100, 0]}>
-             <div 
-                tabIndex={0}
-                onClick={(e) => { e.currentTarget.style.display='none'; gl.domElement.requestPointerLock(); window.focus(); }}
-                style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'rgba(0,0,0,0.8)', color: 'white', padding: '20px', borderRadius: '10px', fontSize: '20px', cursor: 'pointer', border: '2px solid lime', textAlign: 'center' }}
-            >
-                <p>CLICK TO START</p>
-            </div>
-            <div style={{ position: 'fixed', top: '10px', left: '10px', background: 'rgba(0,0,0,0.8)', color: '#0f0', padding: '10px', fontFamily: 'monospace', fontSize: '12px', pointerEvents: 'none', whiteSpace: 'pre' }}>
-                <p ref={debugTextRef}>Initializing...</p>
-            </div>
-        </Html>
+        {mounted && (
+            <Html position={[0,0,0]} zIndexRange={[100, 0]}>
+                 <div 
+                    tabIndex={0}
+                    onClick={(e) => { e.currentTarget.style.display='none'; gl.domElement.requestPointerLock(); window.focus(); }}
+                    style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'rgba(0,0,0,0.8)', color: 'white', padding: '20px', borderRadius: '10px', fontSize: '20px', cursor: 'pointer', border: '2px solid lime', textAlign: 'center' }}
+                >
+                    <p>CLICK TO START</p>
+                </div>
+                <div style={{ position: 'fixed', top: '10px', left: '10px', background: 'rgba(0,0,0,0.8)', color: '#0f0', padding: '10px', fontFamily: 'monospace', fontSize: '12px', pointerEvents: 'none', whiteSpace: 'pre' }}>
+                    <p ref={debugTextRef}>Initializing...</p>
+                </div>
+            </Html>
+        )}
 
         {/* --- PHYSICS BODY --- */}
         {/* Callback Ref used to manually populate our ref if React behaves oddly */}

@@ -91,15 +91,29 @@ function MainHall({ items, title, variant = 'gallery' }: { items: any[], title: 
     const wallColor = isHub ? "#111" : "#222";
     const accentColor = isHub ? "#DAA520" : "#888"; 
 
+    // --- OPTIMIZATION: Check for Mobile ---
+    const [isMobile, setIsMobile] = useState(false);
+    useEffect(() => {
+        const checkMobile = () => setIsMobile(window.innerWidth < 768);
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
+
     return (
         <group>
              <ambientLight intensity={isHub ? 0.6 : 0.8} color="#ffffff" />
              <pointLight position={[0, 35, 0]} intensity={isHub ? 500 : 400} distance={120} decay={2} castShadow color={isHub ? "#fff8e0" : "#ffffff"} />
 
-             {/* Floor Visuals (Physics handled in Scene.tsx usually, but we can add a backup floor here if needed) */}
+             {/* Floor Visuals */}
              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, -ROOM_DEPTH/2 + 15]}>
                 <planeGeometry args={[ROOM_WIDTH, ROOM_DEPTH]} />
-                <MeshReflectorMaterial blur={[0, 0]} resolution={512} mixBlur={0} mixStrength={isHub ? 50 : 25} roughness={isHub ? 0.2 : 0.4} depthScale={0} minDepthThreshold={0.9} maxDepthThreshold={1} color={floorColor} metalness={isHub ? 0.9 : 0.6} mirror={isHub ? 0.8 : 0.5} />
+                {/* CONDITIONAL RENDERING: Standard on Mobile, Reflector on Desktop */}
+                {isMobile ? (
+                    <meshStandardMaterial color={floorColor} roughness={0.1} metalness={0.5} />
+                ) : (
+                    <MeshReflectorMaterial blur={[0, 0]} resolution={512} mixBlur={0} mixStrength={isHub ? 50 : 25} roughness={isHub ? 0.2 : 0.4} depthScale={0} minDepthThreshold={0.9} maxDepthThreshold={1} color={floorColor} metalness={isHub ? 0.9 : 0.6} mirror={isHub ? 0.8 : 0.5} />
+                )}
              </mesh>
 
              {/* PHYSICS: SOLID WALLS */}

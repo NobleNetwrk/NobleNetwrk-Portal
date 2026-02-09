@@ -203,6 +203,15 @@ export default function IRLArtGallery({ position, items = [] }: { position: [num
     const midRight = items.find(i => i.position === 'right-inner');
     const farRight = items.find(i => i.position === 'right-outer');
 
+    // --- OPTIMIZATION: Check for Mobile ---
+    const [isMobile, setIsMobile] = useState(false);
+    useEffect(() => {
+        const checkMobile = () => setIsMobile(window.innerWidth < 768);
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
+
     return (
         <group position={position}>
             {/* PHYSICS: Floor & Structure */}
@@ -210,7 +219,12 @@ export default function IRLArtGallery({ position, items = [] }: { position: [num
                 {/* Visual Floor */}
                 <mesh rotation={[-Math.PI/2, 0, 0]} position={[0, 0.1, 0]}>
                     <boxGeometry args={[60, 40, 0.5]} />
-                    <MeshReflectorMaterial blur={[0, 0]} resolution={512} mixBlur={0} mixStrength={30} roughness={0.1} depthScale={0} minDepthThreshold={0.9} maxDepthThreshold={1} color="#f5f5f5" metalness={0.1} mirror={0.7} />
+                    {/* CONDITIONAL RENDERING: Standard on Mobile, Reflector on Desktop */}
+                    {isMobile ? (
+                        <meshStandardMaterial color="#f5f5f5" roughness={0.1} metalness={0.1} />
+                    ) : (
+                        <MeshReflectorMaterial blur={[0, 0]} resolution={512} mixBlur={0} mixStrength={30} roughness={0.1} depthScale={0} minDepthThreshold={0.9} maxDepthThreshold={1} color="#f5f5f5" metalness={0.1} mirror={0.7} />
+                    )}
                 </mesh>
                 
                 {/* Physics Floor (Aligned with top of visual floor at ~0.35) */}

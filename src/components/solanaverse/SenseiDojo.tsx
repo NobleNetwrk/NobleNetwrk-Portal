@@ -25,6 +25,16 @@ function SafeImageMaterial({ url }: { url: string }) {
 }
 
 export default function SenseiDojo({ onExit }: { onExit: () => void }) {
+  
+  // --- OPTIMIZATION: Check for Mobile ---
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+      const checkMobile = () => setIsMobile(window.innerWidth < 768);
+      checkMobile();
+      window.addEventListener('resize', checkMobile);
+      return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   return (
     <group>
       {/* --- ATMOSPHERE --- */}
@@ -37,19 +47,24 @@ export default function SenseiDojo({ onExit }: { onExit: () => void }) {
           {/* Visual Floor */}
           <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]}>
             <planeGeometry args={[60, 60]} />
-            <MeshReflectorMaterial
-              blur={[300, 100]}
-              resolution={1024}
-              mixBlur={1}
-              mixStrength={15}
-              roughness={0.8}
-              depthScale={1.2}
-              minDepthThreshold={0.4}
-              maxDepthThreshold={1.4}
-              color="#d2b48c"
-              metalness={0.1}
-              mirror={0.5} 
-            />
+            {/* CONDITIONAL RENDERING: Standard on Mobile, Reflector on Desktop */}
+            {isMobile ? (
+                <meshStandardMaterial color="#d2b48c" roughness={0.8} metalness={0.1} />
+            ) : (
+                <MeshReflectorMaterial
+                  blur={[300, 100]}
+                  resolution={1024}
+                  mixBlur={1}
+                  mixStrength={15}
+                  roughness={0.8}
+                  depthScale={1.2}
+                  minDepthThreshold={0.4}
+                  maxDepthThreshold={1.4}
+                  color="#d2b48c"
+                  metalness={0.1}
+                  mirror={0.5} 
+                />
+            )}
           </mesh>
           {/* Physics Floor */}
           <CuboidCollider args={[30, 0.5, 30]} position={[0, -0.6, 0]} />

@@ -52,12 +52,14 @@ interface PublicGallery { id: string; owner: string; name: string; assetCount: n
 type ViewMode = 'hall' | 'gallery' | 'gecko' | 'panda';
 
 export default function SolanaversePage() {
-  const { publicKey, connected, connecting } = useWallet()
+  const { publicKey, connected, connecting, wallet } = useWallet()
   const router = useRouter()
   
   // --- STATE ---
   const [loading, setLoading] = useState(false)
   const [accessGranted, setAccessGranted] = useState(false) 
+  const [showConnectState, setShowConnectState] = useState(false); // To show "Connection Failed" UI
+
   const [myNfts, setMyNfts] = useState<RawNFT[]>([]) 
   const [adminNfts, setAdminNfts] = useState<RawNFT[]>([]) 
   const [publicGalleries, setPublicGalleries] = useState<PublicGallery[]>([]) 
@@ -93,31 +95,41 @@ export default function SolanaversePage() {
   const [collectedItems, setCollectedItems] = useState<string[]>([]);
 
   // ---------------------------------------------------------
-  // 1. STRICT ACCESS CONTROL (FIXED)
+  // 1. STRICT ACCESS CONTROL (REFINED)
   // ---------------------------------------------------------
   useEffect(() => {
-      // If we are already verified, do nothing.
-      if (accessGranted) return;
-
-      // If wallet says connected, grant access immediately.
-      if (connected) {
-          setAccessGranted(true);
+      // If already verified, stop checking
+      if (accessGranted) {
+          setShowConnectState(false);
           return;
       }
 
-      // If currently trying to connect, just wait.
-      if (connecting) return;
+      // Success: Wallet connected
+      if (connected && publicKey) {
+          setAccessGranted(true);
+          setShowConnectState(false);
+          return;
+      }
 
-      // Only start the "Kick" timer if we are !connected AND !connecting
+      // If connecting, just wait
+      if (connecting) {
+          setShowConnectState(false);
+          return;
+      }
+
+      // If disconnected, start a graceful timer before kicking/showing error
+      const timeoutMs = wallet ? 4000 : 2000; // Give selected wallets more time (4s)
+      
       const checkTimer = setTimeout(() => {
-          if (!connected) {
-              toast.error("⛔ Access Denied: Wallet Required");
-              router.push('/'); // FIXED: Redirect to Landing Page "/"
+          if (!connected && !connecting) {
+              // Instead of instantly pushing, show the "Connection Failed" UI
+              // This gives the user a chance to click "Connect" again without page reload
+              setShowConnectState(true);
           }
-      }, 2000); // 2 second buffer for auto-connect
+      }, timeoutMs); 
 
       return () => clearTimeout(checkTimer);
-  }, [connected, connecting, router, accessGranted]);
+  }, [connected, connecting, publicKey, accessGranted, wallet]);
 
 
   // 2. Calculate Level
@@ -140,9 +152,7 @@ export default function SolanaversePage() {
               body: JSON.stringify({ userId, xp, level, collectedItems: items })
           });
           
-          if (!res.ok) {
-            console.error("Save failed");
-          }
+          if (!res.ok) console.error("Save failed");
       } catch (e) { console.error("Failed to save progress", e); }
   };
 
@@ -173,8 +183,6 @@ export default function SolanaversePage() {
   };
 
   // 6. SYNC ON LOGIN
-  // This ensures that if you login with ANY wallet linked to your User ID,
-  // the game state is consistent.
   useEffect(() => {
       if (userId && collectedItems.length > 0) {
           saveProgress(userXP, userLevel, collectedItems);
@@ -311,7 +319,6 @@ export default function SolanaversePage() {
                     const res = await fetch(`/api/user/profile?wallet=${wallet}`);
                     if (res.ok) {
                         const data = await res.json();
-                        // This ID is the Master User ID
                         const id = data.user?.id || data.id || data.data?.id; 
                         
                         if (data.user?.equippedAvatar) savedAvatar = data.user.equippedAvatar;
@@ -334,8 +341,6 @@ export default function SolanaversePage() {
                     }
                 });
 
-                // --- FETCH PERSISTENT GAME DATA ---
-                // This fetches data linked to the User ID, not just the current wallet
                 fetch(`/api/game/progress?userId=${foundId}`)
                     .then(r => r.json())
                     .then(d => {
@@ -435,11 +440,30 @@ export default function SolanaversePage() {
 
   // --- ACCESS BLOCKER ---
   if (!accessGranted) {
+      if (showConnectState) {
+          return (
+              <div className="h-screen bg-black flex flex-col items-center justify-center gap-6 z-50">
+                  <div className="text-red-500 font-mono text-xl animate-pulse uppercase tracking-widest border border-red-500 p-4 rounded bg-red-900/20">
+                      ⚠ Connection Lost / Required
+                  </div>
+                  <div className="flex gap-4">
+                      <WalletMultiButton className="!bg-purple-600 hover:!bg-purple-500 !font-bold !rounded-lg !h-12 !text-sm" />
+                      <button 
+                        onClick={() => router.push('/')}
+                        className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-lg font-mono uppercase text-sm border border-white/20 transition-all"
+                      >
+                        Return Home
+                      </button>
+                  </div>
+              </div>
+          )
+      }
+
       return (
           <div className="h-screen bg-black flex flex-col items-center justify-center gap-4">
               <LoadingSpinner size="lg" />
               <div className="text-white font-mono text-sm animate-pulse uppercase tracking-widest">
-                  Verifying Identity...
+                  Initializing...
               </div>
           </div>
       );

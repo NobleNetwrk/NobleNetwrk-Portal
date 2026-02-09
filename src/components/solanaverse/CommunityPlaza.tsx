@@ -1,8 +1,8 @@
 "use client"
-import React, { useRef, useMemo, memo, Suspense } from 'react'
+import React, { useRef, useMemo, memo, Suspense, useState, useEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Box, Cylinder, Sphere, Text, MeshReflectorMaterial, Torus, Sparkles, Dodecahedron } from '@react-three/drei'
-import { RigidBody, CylinderCollider } from '@react-three/rapier' // <--- IMPORT PHYSICS
+import { RigidBody, CylinderCollider } from '@react-three/rapier' 
 import * as THREE from 'three'
 
 function FlowerPlanter({ position }: { position: [number, number, number] }) {
@@ -27,10 +27,10 @@ function FlowerPlanter({ position }: { position: [number, number, number] }) {
     )
 }
 
-function WaterFountain({ position }: { position: [number, number, number] }) {
+function WaterFountain({ position, isMobile }: { position: [number, number, number], isMobile: boolean }) {
     return (
         <group position={position}>
-            {/* PHYSICS: Base (Hull collider fits the cylinder shape automatically) */}
+            {/* PHYSICS: Base */}
             <RigidBody type="fixed" colliders="hull">
                 <Cylinder args={[6, 7, 2, 8]} position={[0, 1, 0]}><meshStandardMaterial color="#333" roughness={0.4} /></Cylinder>
             </RigidBody>
@@ -39,7 +39,8 @@ function WaterFountain({ position }: { position: [number, number, number] }) {
             <Cylinder args={[4, 4, 1, 8]} position={[0, 2.5, 0]}><meshStandardMaterial color="#1a1a1a" roughness={0.4} /></Cylinder>
             <Cylinder args={[2, 2, 4, 8]} position={[0, 4, 0]}><meshStandardMaterial color="#333" roughness={0.4} /></Cylinder>
             <Cylinder args={[5.5, 5.5, 0.5, 8]} position={[0, 1.8, 0]}><meshStandardMaterial color="#00BFFF" opacity={0.8} transparent /></Cylinder>
-            <Sparkles count={150} scale={[6, 12, 6]} size={4} speed={0.8} opacity={0.5} color="#00BFFF" position={[0, 6, 0]} />
+            {/* Optimization: Reduce particle count on mobile */}
+            <Sparkles count={isMobile ? 50 : 150} scale={[6, 12, 6]} size={4} speed={0.8} opacity={0.5} color="#00BFFF" position={[0, 6, 0]} />
             <pointLight position={[0, 5, 0]} intensity={20} color="#00BFFF" distance={15} />
         </group>
     )
@@ -116,20 +117,35 @@ function RestrictedPortal({ position, rotation, label, color, type }: any) {
 }
 
 const CommunityPlaza = memo(({ position }: { position: [number, number, number] }) => {
+    
+    // --- OPTIMIZATION: Check for Mobile ---
+    const [isMobile, setIsMobile] = useState(false);
+    useEffect(() => {
+        const checkMobile = () => setIsMobile(window.innerWidth < 768);
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
+
     return (
         <group position={position}>
-            {/* PHYSICS: Floor Collider (Invisible Disc) */}
+            {/* PHYSICS: Floor Collider */}
             <RigidBody type="fixed" colliders={false}>
                 <CylinderCollider args={[0.5, 40]} position={[0, -0.65, 0]} />
                 
-                {/* Visual Floor Mesh (No collision on mesh itself to keep it simple) */}
+                {/* Visual Floor Mesh */}
                 <mesh rotation={[-Math.PI/2, 0, 0]} position={[0, -0.15, 0]}>
                     <circleGeometry args={[40, 32]} />
-                    <MeshReflectorMaterial blur={[0, 0]} resolution={512} mixBlur={0} mixStrength={10} roughness={0.8} depthScale={0} minDepthThreshold={0.9} maxDepthThreshold={1} color="#2a2a2a" metalness={0.2} mirror={0.2} />
+                    {/* CONDITIONAL RENDERING: Standard on Mobile, Reflector on Desktop */}
+                    {isMobile ? (
+                        <meshStandardMaterial color="#2a2a2a" roughness={0.8} metalness={0.2} />
+                    ) : (
+                        <MeshReflectorMaterial blur={[0, 0]} resolution={512} mixBlur={0} mixStrength={10} roughness={0.8} depthScale={0} minDepthThreshold={0.9} maxDepthThreshold={1} color="#2a2a2a" metalness={0.2} mirror={0.2} />
+                    )}
                 </mesh>
             </RigidBody>
 
-            <WaterFountain position={[0, 0, 0]} />
+            <WaterFountain position={[0, 0, 0]} isMobile={isMobile} />
             <RestrictedPortal position={[0, 0, -30]} rotation={[0, 0, 0]} label="SENSEI DOJO" color="#FDB813" type="panda" />
             <RestrictedPortal position={[0, 0, 30]} rotation={[0, Math.PI, 0]} label="GECKO GARAGE" color="#00FF00" type="gecko" />
             <FlowerPlanter position={[20, 0, 20]} />

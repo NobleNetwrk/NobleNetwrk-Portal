@@ -1,5 +1,5 @@
 "use client"
-import React, { useRef, memo, Suspense, useMemo } from 'react'
+import React, { useRef, memo, Suspense, useMemo, useState, useEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Box, Cylinder, Torus, Text, Octahedron, Sparkles, MeshReflectorMaterial, Dodecahedron } from '@react-three/drei'
 import { RigidBody, CuboidCollider, CylinderCollider } from '@react-three/rapier' // IMPORT PHYSICS
@@ -88,7 +88,7 @@ const MonolithBar = ({ color, position }: any) => {
 };
 
 // --- SUB-COMPONENT: SOLANA MONOLITH (CENTER) ---
-function SolanaMonolith() {
+function SolanaMonolith({ isMobile }: { isMobile: boolean }) {
     const groupRef = useRef<THREE.Group>(null);
     useFrame((state, delta) => {
         if (groupRef.current) {
@@ -110,8 +110,9 @@ function SolanaMonolith() {
                     <MonolithBar color={SOL_MID} position={[0, 0, 0]} />
                 </group>
                 <MonolithBar color={SOL_BOT} position={[0, -4.0, 0]} />
-                <Sparkles count={40} scale={[14, 22, 14]} size={8} speed={0.4} opacity={0.5} color={SOL_TOP} position={[0, 6, 0]} />
-                <Sparkles count={40} scale={[14, 22, 14]} size={8} speed={0.4} opacity={0.5} color={SOL_MID} position={[0, -6, 0]} />
+                {/* OPTIMIZATION: Less particles on mobile */}
+                <Sparkles count={isMobile ? 10 : 40} scale={[14, 22, 14]} size={8} speed={0.4} opacity={0.5} color={SOL_TOP} position={[0, 6, 0]} />
+                <Sparkles count={isMobile ? 10 : 40} scale={[14, 22, 14]} size={8} speed={0.4} opacity={0.5} color={SOL_MID} position={[0, -6, 0]} />
             </group>
         </group>
     )
@@ -154,7 +155,7 @@ function MysticPortal({ position, rotation, label, color = "#8b5cf6" }: any) {
     )
 }
 
-function NexusGate({ position, rotation = [0, 0, 0] }: { position: [number, number, number], rotation?: [number, number, number] }) {
+function NexusGate({ position, rotation = [0, 0, 0], isMobile }: { position: [number, number, number], rotation?: [number, number, number], isMobile: boolean }) {
   const crystalRef = useRef<THREE.Group>(null);
   useFrame((state, delta) => { if (crystalRef.current) crystalRef.current.rotation.y += delta * 0.5; });
   return (
@@ -194,26 +195,38 @@ function NexusGate({ position, rotation = [0, 0, 0] }: { position: [number, numb
        </group>
        <pointLight position={[-16, 24, 4]} color="#a855f7" intensity={40} distance={20} />
        <pointLight position={[16, 24, 4]} color="#a855f7" intensity={40} distance={20} />
-       <Sparkles count={60} scale={[40, 35, 10]} size={6} speed={0.4} opacity={0.6} color="#d8b4fe" position={[0, 15, 0]} />
+       {/* OPTIMIZATION: Reduce particles on mobile */}
+       <Sparkles count={isMobile ? 15 : 60} scale={[40, 35, 10]} size={6} speed={0.4} opacity={0.6} color="#d8b4fe" position={[0, 15, 0]} />
     </group>
   )
 }
 
 const PortalNexus = memo(({ publicGalleries, position }: { publicGalleries: any[], position: [number, number, number] }) => {
     const radius = HENGE_RADIUS;
+
+    // --- OPTIMIZATION: Check for Mobile ---
+    const [isMobile, setIsMobile] = useState(false);
+    useEffect(() => {
+        const checkMobile = () => setIsMobile(window.innerWidth < 768);
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
+
     return (
         <group position={position}>
             {/* 1. STONE BORDER (With Entrance Gap) */}
             <StoneHengeBorder />
 
             {/* 2. SOLANA MONOLITH */}
-            <SolanaMonolith />
+            <SolanaMonolith isMobile={isMobile} />
 
             {/* 3. ENTRANCE GATE */}
             {/* Moved to -50 (Just outside border) acting as main entrance */}
             <NexusGate 
                 position={[-50, 0, 0]} 
-                rotation={[0, -Math.PI / 2, 0]} 
+                rotation={[0, -Math.PI / 2, 0]}
+                isMobile={isMobile} 
             />
             
             {/* 4. USER PORTALS */}
@@ -242,7 +255,12 @@ const PortalNexus = memo(({ publicGalleries, position }: { publicGalleries: any[
                 <CylinderCollider args={[0.2, radius + 10]} position={[0, -0.2, 0]} />
                 <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]}>
                     <circleGeometry args={[radius + 10, 64]} />
-                    <MeshReflectorMaterial blur={[0, 0]} resolution={512} mixBlur={0} mixStrength={20} roughness={0.3} depthScale={0} minDepthThreshold={0.9} maxDepthThreshold={1} color="#050505" metalness={0.6} mirror={0.5} />
+                    {/* CONDITIONAL RENDERING: Standard on Mobile, Reflector on Desktop */}
+                    {isMobile ? (
+                        <meshStandardMaterial color="#050505" roughness={0.9} metalness={0.1} />
+                    ) : (
+                        <MeshReflectorMaterial blur={[0, 0]} resolution={512} mixBlur={0} mixStrength={20} roughness={0.3} depthScale={0} minDepthThreshold={0.9} maxDepthThreshold={1} color="#050505" metalness={0.6} mirror={0.5} />
+                    )}
                 </mesh>
              </RigidBody>
         </group>

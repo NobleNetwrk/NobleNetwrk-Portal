@@ -17,6 +17,7 @@ import { useAssetHoldings } from '@/hooks/useAssetHoldings';
 import PortalNexus from './PortalNexus';
 import CommunityPlaza from './CommunityPlaza';
 import MainHall from './MainHall';
+import UserGallery from './UserGallery'; 
 import GeckoGarage from './GeckoGarage';
 import SenseiDojo from './SenseiDojo';
 import GamingRoom from './GamingRoom'; 
@@ -57,103 +58,103 @@ function GrandWalkway() {
     
     // Segment Lengths
     const southStartZ = 15;
-    const southEndZ = intersectionZ - halfPath; // 50 - 12 = 38
-    
-    const northStartZ = intersectionZ + halfPath; // 50 + 12 = 62
-    const northEndZ = 140; // To Art Gallery
-    
-    const westStartX = -120; // To Community
-    const westEndX = -halfPath; // -12
-    
-    const eastStartX = halfPath; // 12
-    const eastEndX = 120; // To Portals
+    const southEndZ = intersectionZ - halfPath;
+    const northStartZ = intersectionZ + halfPath;
+    const northEndZ = 140;
+    const westStartX = -120;
+    const westEndX = -halfPath;
+    const eastStartX = halfPath;
+    const eastEndX = 120;
+
+    // --- OPTIMIZATION: Check for Mobile ---
+    const [isMobile, setIsMobile] = useState(false);
+    const [isMounted, setIsMounted] = useState(false); // Hydration Fix
+
+    useEffect(() => {
+        setIsMounted(true);
+        const checkMobile = () => setIsMobile(window.innerWidth < 768);
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
+
+    // Only render the mobile material AFTER mounting to prevent hydration mismatch
+    const FloorMaterial = (isMounted && isMobile)
+        ? <meshStandardMaterial color="#0a0a0a" roughness={0.8} metalness={0.2} />
+        : <MeshReflectorMaterial blur={[0, 0]} resolution={512} mixBlur={0} mixStrength={30} roughness={0.4} depthScale={0} minDepthThreshold={0.9} maxDepthThreshold={1} color="#0a0a0a" metalness={0.5} mirror={0.5} />;
 
     return (
         <group>
             <RigidBody type="fixed" colliders="cuboid">
-                
-                {/* 1. SOUTH SEGMENT (Hall to Cross) */}
+                {/* 1. SOUTH SEGMENT */}
                 <group position={[0, -0.15, (southStartZ + southEndZ) / 2]}>
-                    {/* Floor Physics */}
                     <CuboidCollider args={[halfPath, 0.5, (southEndZ - southStartZ) / 2]} position={[0, -0.5, 0]} />
-                    {/* Floor Visual */}
                     <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                         <planeGeometry args={[pathWidth, southEndZ - southStartZ]} />
-                        <MeshReflectorMaterial blur={[0, 0]} resolution={512} mixBlur={0} mixStrength={30} roughness={0.4} depthScale={0} minDepthThreshold={0.9} maxDepthThreshold={1} color="#0a0a0a" metalness={0.5} mirror={0.5} />
+                        {FloorMaterial}
                     </mesh>
-                    {/* Edges */}
                     <Box args={[0.5, 0.5, southEndZ - southStartZ]} position={[-halfPath, 0.15, 0]}><meshStandardMaterial color="#DAA520" /></Box>
                     <Box args={[0.5, 0.5, southEndZ - southStartZ]} position={[halfPath, 0.15, 0]}><meshStandardMaterial color="#DAA520" /></Box>
                 </group>
 
-                {/* 2. NORTH SEGMENT (Cross to Gallery) */}
+                {/* 2. NORTH SEGMENT */}
                 <group position={[0, -0.15, (northStartZ + northEndZ) / 2]}>
                     <CuboidCollider args={[halfPath, 0.5, (northEndZ - northStartZ) / 2]} position={[0, -0.5, 0]} />
                     <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                         <planeGeometry args={[pathWidth, northEndZ - northStartZ]} />
-                        <MeshReflectorMaterial blur={[0, 0]} resolution={512} mixBlur={0} mixStrength={30} roughness={0.4} depthScale={0} minDepthThreshold={0.9} maxDepthThreshold={1} color="#0a0a0a" metalness={0.5} mirror={0.5} />
+                        {FloorMaterial}
                     </mesh>
                     <Box args={[0.5, 0.5, northEndZ - northStartZ]} position={[-halfPath, 0.15, 0]}><meshStandardMaterial color="#DAA520" /></Box>
                     <Box args={[0.5, 0.5, northEndZ - northStartZ]} position={[halfPath, 0.15, 0]}><meshStandardMaterial color="#DAA520" /></Box>
                 </group>
 
-                {/* 3. WEST SEGMENT (Community to Cross) */}
+                {/* 3. WEST SEGMENT */}
                 <group position={[(westStartX + westEndX) / 2, -0.15, intersectionZ]}>
                     <CuboidCollider args={[(westEndX - westStartX) / 2, 0.5, halfPath]} position={[0, -0.5, 0]} />
                     <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                         <planeGeometry args={[westEndX - westStartX, pathWidth]} />
-                        <MeshReflectorMaterial blur={[0, 0]} resolution={512} mixBlur={0} mixStrength={30} roughness={0.4} depthScale={0} minDepthThreshold={0.9} maxDepthThreshold={1} color="#0a0a0a" metalness={0.5} mirror={0.5} />
+                        {FloorMaterial}
                     </mesh>
                     <Box args={[westEndX - westStartX, 0.5, 0.5]} position={[0, 0.15, -halfPath]}><meshStandardMaterial color="#DAA520" /></Box>
                     <Box args={[westEndX - westStartX, 0.5, 0.5]} position={[0, 0.15, halfPath]}><meshStandardMaterial color="#DAA520" /></Box>
                 </group>
 
-                {/* 4. EAST SEGMENT (Cross to Portals) */}
+                {/* 4. EAST SEGMENT */}
                 <group position={[(eastStartX + eastEndX) / 2, -0.15, intersectionZ]}>
                     <CuboidCollider args={[(eastEndX - eastStartX) / 2, 0.5, halfPath]} position={[0, -0.5, 0]} />
                     <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                         <planeGeometry args={[eastEndX - eastStartX, pathWidth]} />
-                        <MeshReflectorMaterial blur={[0, 0]} resolution={512} mixBlur={0} mixStrength={30} roughness={0.4} depthScale={0} minDepthThreshold={0.9} maxDepthThreshold={1} color="#0a0a0a" metalness={0.5} mirror={0.5} />
+                        {FloorMaterial}
                     </mesh>
                     <Box args={[eastEndX - eastStartX, 0.5, 0.5]} position={[0, 0.15, -halfPath]}><meshStandardMaterial color="#DAA520" /></Box>
                     <Box args={[eastEndX - eastStartX, 0.5, 0.5]} position={[0, 0.15, halfPath]}><meshStandardMaterial color="#DAA520" /></Box>
                 </group>
 
-                {/* 5. INTERSECTION (Center Square) */}
+                {/* 5. INTERSECTION */}
                 <group position={[0, -0.15, intersectionZ]}>
                     <CuboidCollider args={[halfPath, 0.5, halfPath]} position={[0, -0.5, 0]} />
                     <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                         <planeGeometry args={[pathWidth, pathWidth]} />
-                        <MeshReflectorMaterial blur={[0, 0]} resolution={512} mixBlur={0} mixStrength={30} roughness={0.4} depthScale={0} minDepthThreshold={0.9} maxDepthThreshold={1} color="#0a0a0a" metalness={0.5} mirror={0.5} />
+                        {FloorMaterial}
                     </mesh>
-                    {/* No Edges here to allow crossing */}
                 </group>
-
             </RigidBody>
 
-            {/* PLANTERS - Placed along the edges */}
-            {/* South Path Planters */}
+            {/* PLANTERS */}
             <FlowerPlanter position={[-15, 0, 25]} />
             <FlowerPlanter position={[15, 0, 25]} />
-            
-            {/* North Path Planters */}
             <FlowerPlanter position={[-15, 0, 80]} />
             <FlowerPlanter position={[15, 0, 80]} />
             <FlowerPlanter position={[-15, 0, 110]} />
             <FlowerPlanter position={[15, 0, 110]} />
-
-            {/* West Path Planters */}
-            <FlowerPlanter position={[-40, 0, 38]} /> {/* Below Path */}
-            <FlowerPlanter position={[-40, 0, 62]} /> {/* Above Path */}
+            <FlowerPlanter position={[-40, 0, 38]} /> 
+            <FlowerPlanter position={[-40, 0, 62]} /> 
             <FlowerPlanter position={[-80, 0, 38]} />
             <FlowerPlanter position={[-80, 0, 62]} />
-
-            {/* East Path Planters */}
             <FlowerPlanter position={[40, 0, 38]} />
             <FlowerPlanter position={[40, 0, 62]} />
             <FlowerPlanter position={[80, 0, 38]} />
             <FlowerPlanter position={[80, 0, 62]} />
-
         </group>
     )
 }
@@ -266,18 +267,9 @@ const StaticWorldEnvironment = memo(({ mode, activeData, publicGalleries, irlDat
             </group>
         );
     } else if (mode === 'gallery') {
-        return (
-            <group>
-                <MainHall items={activeData} title={galleryTitle || "USER GALLERY"} variant="gallery" />
-                <RigidBody type="fixed" colliders={false}><CuboidCollider args={[50, 0.5, 50]} position={[0, -0.5, 0]} /></RigidBody>
-                <group position={[0, 0, EXIT_PORTAL_Z]} rotation={[0, Math.PI, 0]}>
-                    <Torus args={[4.5, 0.3, 16, 32]}><meshBasicMaterial color="#ef4444" /></Torus>
-                    <Suspense fallback={null}><Text position={[0, 5, 0]} fontSize={1.5} color="#FFD700" anchorX="center">RETURN TO HALL</Text></Suspense>
-                </group>
-                <ambientLight intensity={0.5} color="#cddeff" />
-                <directionalLight position={[100, 150, 50]} intensity={3} color="#ffebc2" castShadow shadow-mapSize={[2048, 2048]} />
-            </group>
-        );
+        // --- SEPARATED INTO USERGALLERY COMPONENT ---
+        return <UserGallery items={activeData} title={galleryTitle} />
+        
     } else if (mode === 'gecko') {
         return <GeckoGarage onExit={() => {}} />;
     } else if (mode === 'panda') {
@@ -294,7 +286,10 @@ export default function Scene({
     onEnterCommunity, avatarId, isSelfieMode, galleryTitle, username, mobileInput, 
     irlData, showArcade, setShowArcade, collectedItems = [], onCollectItem
 }: any) {
-  const startPos = useMemo<[number, number, number]>(() => [(Math.random() * 10) - 5, 2, 10], []); 
+  
+  // FIXED: No more Math.random() here. Uses fixed position for hydration match.
+  const startPos: [number, number, number] = [0, 2, 10]; 
+  
   const communitySpawn = useMemo<[number, number, number]>(() => [0, 2, 20], []);
   const playerPosRef = useRef(new THREE.Vector3(...startPos));
   const others = useOthers();
@@ -309,6 +304,18 @@ export default function Scene({
 
   const AudioSystem = useMemo(() => <SpatialAudio />, []);
 
+  // --- OPTIMIZATION: Check for Mobile ---
+  const [isMobile, setIsMobile] = useState(false);
+  const [isMounted, setIsMounted] = useState(false); // Hydration safety check
+
+  useEffect(() => {
+      setIsMounted(true);
+      const checkMobile = () => setIsMobile(window.innerWidth < 768);
+      checkMobile();
+      window.addEventListener('resize', checkMobile);
+      return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   return (
     <>
         <div className="absolute top-24 right-8 z-50 pointer-events-none">
@@ -320,7 +327,7 @@ export default function Scene({
         <Canvas id="solanaverse-canvas" shadows camera={{ fov: 60, far: 1000 }} gl={{ antialias: false, powerPreference: "high-performance", preserveDrawingBuffer: true }}>
             
             {/* PHYSICS OUTSIDE OF SUSPENSE TO PREVENT DEADLOCK */}
-            <Physics gravity={[0, -18, 0]} debug={true}> 
+            <Physics gravity={[0, -18, 0]} debug={false}> 
                 <Suspense fallback={<Text position={[0, 10, 0]} color="white" anchorX="center">Loading World...</Text>}>
                     
                     {/* GLOBAL FLOOR CATCHER */}
@@ -342,6 +349,7 @@ export default function Scene({
                         isSelfieMode={isSelfieMode} 
                         username={username}
                         mobileInput={mobileInput}
+                        inputEnabled={!showArcade} // <--- DISABLE INPUT WHEN ARCADE IS OPEN
                     />
                     
                     {others.map(({ connectionId, presence }) => {
@@ -380,7 +388,10 @@ export default function Scene({
                 </Suspense>
             </Physics> 
 
-            <ContactShadows resolution={512} scale={100} blur={2} opacity={0.5} far={10} color="#000000" />
+            {/* OPTIMIZATION: Disable expensive shadows on mobile */}
+            {(isMounted && !isMobile) && (
+                <ContactShadows resolution={512} scale={100} blur={2} opacity={0.5} far={10} color="#000000" />
+            )}
         </Canvas>
     </>
   );

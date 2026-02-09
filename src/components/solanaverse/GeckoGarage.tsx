@@ -46,6 +46,16 @@ function ArmchairModel(props: any) {
 }
 
 export default function GeckoGarage({ onExit }: { onExit: () => void }) {
+  
+  // --- OPTIMIZATION: Check for Mobile ---
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+      const checkMobile = () => setIsMobile(window.innerWidth < 768);
+      checkMobile();
+      window.addEventListener('resize', checkMobile);
+      return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   return (
     <group>
       {/* --- ATMOSPHERE --- */}
@@ -59,19 +69,24 @@ export default function GeckoGarage({ onExit }: { onExit: () => void }) {
           {/* Visual Floor */}
           <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]}>
             <planeGeometry args={[60, 60]} />
-            <MeshReflectorMaterial
-              blur={[300, 100]}
-              resolution={1024}
-              mixBlur={1}
-              mixStrength={40}
-              roughness={0.6}
-              depthScale={1.2}
-              minDepthThreshold={0.4}
-              maxDepthThreshold={1.4}
-              color="#1a1a1a"
-              metalness={0.8}
-              mirror={0.5} 
-            />
+            {/* CONDITIONAL RENDERING: Standard on Mobile, Reflector on Desktop */}
+            {isMobile ? (
+                <meshStandardMaterial color="#1a1a1a" roughness={0.6} metalness={0.8} />
+            ) : (
+                <MeshReflectorMaterial
+                  blur={[300, 100]}
+                  resolution={1024}
+                  mixBlur={1}
+                  mixStrength={40}
+                  roughness={0.6}
+                  depthScale={1.2}
+                  minDepthThreshold={0.4}
+                  maxDepthThreshold={1.4}
+                  color="#1a1a1a"
+                  metalness={0.8}
+                  mirror={0.5} 
+                />
+            )}
           </mesh>
           {/* Physics Floor */}
           <CuboidCollider args={[30, 0.5, 30]} position={[0, -0.6, 0]} />
