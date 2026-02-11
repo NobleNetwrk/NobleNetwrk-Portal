@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 
+// FORCE DYNAMIC: Prevents Next.js from caching this route handler at build time
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const mint = searchParams.get('mint');
@@ -14,8 +17,8 @@ export async function GET(request: Request) {
           'Authorization': `Bearer ${process.env.ME_API}`,
           'Accept': 'application/json'
         },
-        // Cache for 60 seconds to avoid hitting rate limits while keeping prices fresh
-        next: { revalidate: 60 } 
+        // DISABLE CACHE: Ensure we always get the live price from Magic Eden
+        cache: 'no-store' 
       }
     );
 

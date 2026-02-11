@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import { VersionedTransaction, Transaction } from '@solana/web3.js' 
 import { useConnection, useWallet } from '@solana/wallet-adapter-react'
 import { toast } from 'react-toastify'; 
-import { RigidBody, CuboidCollider } from '@react-three/rapier' // <--- IMPORT PHYSICS
+import { RigidBody, CuboidCollider } from '@react-three/rapier' 
 
 // --- UTILS ---
 const cleanUrl = (url: string) => {
@@ -47,85 +47,184 @@ function ArtPlaque({ mint, name, manualPrice }: { mint?: string, name?: string, 
     const [isBuying, setIsBuying] = useState(false);
     const [hovered, setHovered] = useState(false);
 
+    // Helper to calculate total price including fees
+    const calculateTotal = (baseSol: number, royaltyBps: number) => {
+        const platformFee = 0.02; // 2% buffer/taker fee
+        const royaltyPct = royaltyBps / 10000;
+        return baseSol * (1 + royaltyPct + platformFee);
+    };
+
+    // 1. Initial Load
     useEffect(() => {
         if (!mint) { setStatus("Private Collection"); setPriceText(manualPrice || ""); return; }
-        const checkListing = async () => {
+        
+        const fetchListing = async () => {
             try {
-                const res = await fetch(`/api/me-proxy/listing?mint=${mint}&t=${Date.now()}`);
+                // Force fresh fetch with timestamp
+                const res = await fetch(`/api/me-proxy/listing?mint=${mint}&t=${Date.now()}`).catch(() => null);
+                if (!res || !res.ok) throw new Error("API Error");
+                
                 const data = await res.json();
                 if (Array.isArray(data) && data.length > 0) {
-                    const bestListing = data[0]; 
-                    let baseSol = bestListing.price; 
-                    let baseLamports = bestListing.priceInfo?.solPrice?.rawAmount;
-                    if (!baseLamports && baseSol > 0) baseLamports = Math.floor(baseSol * 1_000_000_000);
-                    const royaltyBps = bestListing.token?.sellerFeeBasisPoints || 0;
-                    const royaltyPct = royaltyBps / 10000; 
-                    const platformFeePct = 0.02; 
-                    const totalMultiplier = 1 + royaltyPct + platformFeePct;
-                    const totalSol = baseSol * totalMultiplier; 
-                    const totalLamports = Math.floor(totalSol * 1_000_000_000);
+                    const best = data[0]; 
+                    const baseSol = best.price; 
+                    
                     if (baseSol > 0) {
-                        setListing({ ...bestListing, baseLamports, finalLamports: totalLamports, finalSol: totalSol });
+                        const totalSol = calculateTotal(baseSol, best.token?.sellerFeeBasisPoints || 0);
+                        const baseLamports = best.priceInfo?.solPrice?.rawAmount || Math.floor(baseSol * 1e9);
+                        const finalLamports = Math.floor(totalSol * 1e9);
+
+                        setListing({ ...best, baseLamports, finalLamports, totalSol });
                         setPriceText(`${totalSol.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} SOL`);
                         setStatus("LISTED");
-                    } else { setStatus("NOT LISTED"); setPriceText(manualPrice || ""); setListing(null); }
-                } else { setStatus("NOT LISTED"); setPriceText(manualPrice || ""); setListing(null); }
-            } catch (e) { console.error("Listing Check Error:", e); setStatus("Unknown"); setPriceText(manualPrice || ""); }
+                    } else { 
+                        setStatus("NOT LISTED"); setPriceText(manualPrice || ""); setListing(null); 
+                    }
+                } else { 
+                    setStatus("NOT LISTED"); setPriceText(manualPrice || ""); setListing(null); 
+                }
+            } catch (e) { 
+                setStatus("NOT LISTED"); setPriceText(manualPrice || ""); 
+            }
         };
-        checkListing();
+        fetchListing();
     }, [mint, manualPrice]);
 
+    // 2. Handle Buy (Refetches data to ensure price is fresh)
     const handleBuy = useCallback(async (e: any) => {
         e.stopPropagation();
-        if (!publicKey || !listing || isBuying) return;
+        
+        if (!publicKey) {
+            toast.error("Please connect wallet first");
+            return;
+        }
+
+        // Fallback if not listed locally
+        if (status !== 'LISTED' || !listing) {
+            if (mint) window.open(`https://magiceden.io/item-details/${mint}`, '_blank');
+            return;
+        }
+
+        if (isBuying) return;
         setIsBuying(true);
-        const toastId = toast.info("Processing Purchase...", { autoClose: false, closeOnClick: false });
+        const toastId = toast.info("Verifying Listing...", { autoClose: false, closeOnClick: false });
+
         try {
+            // A. RE-FETCH LISTING DATA (Crucial Step!)
+            // We must verify the price hasn't changed since the page loaded
+            const freshRes = await fetch(`/api/me-proxy/listing?mint=${mint}&t=${Date.now()}`);
+            const freshData = await freshRes.json();
+            
+            let currentListing = listing;
+            
+            if (Array.isArray(freshData) && freshData.length > 0) {
+                const freshBest = freshData[0];
+                // Check if price changed
+                if (freshBest.price !== listing.price) {
+                    toast.dismiss(toastId);
+                    toast.warn("Price updated! Refreshing...", { autoClose: 3000 });
+                    
+                    // Update local state
+                    const totalSol = calculateTotal(freshBest.price, freshBest.token?.sellerFeeBasisPoints || 0);
+                    setListing({
+                        ...freshBest,
+                        baseLamports: freshBest.priceInfo?.solPrice?.rawAmount || Math.floor(freshBest.price * 1e9),
+                        finalLamports: Math.floor(totalSol * 1e9),
+                        totalSol
+                    });
+                    setPriceText(`${totalSol.toLocaleString()} SOL`);
+                    setIsBuying(false);
+                    return; // Stop here, let user click again with new price
+                }
+                currentListing = { ...freshBest, baseLamports: freshBest.priceInfo?.solPrice?.rawAmount || Math.floor(freshBest.price * 1e9) };
+            } else {
+                throw new Error("Item is no longer listed.");
+            }
+
+            // B. CHECK BALANCE (With 0.02 SOL Buffer for Rent/Fees)
             const balance = await connection.getBalance(publicKey);
-            const cost = Number(listing.finalLamports);
-            if (balance < (cost + 5000000)) throw new Error(`Insufficient SOL.`);
-            let sellerExpiry = listing.expiry;
-            if (!sellerExpiry || sellerExpiry === -1 || sellerExpiry === "-1") sellerExpiry = "0";
+            const cost = Number(currentListing.finalLamports || listing.finalLamports);
+            const buffer = 20_000_000; // 0.02 SOL
+            
+            if (balance < (cost + buffer)) {
+                const shortfall = ((cost + buffer - balance) / 1e9).toFixed(4);
+                throw new Error(`Insufficient SOL. Need ${shortfall} more for fees.`);
+            }
+
+            
+            // C. BUILD TRANSACTION
             const query = new URLSearchParams({
                 buyer: publicKey.toBase58(),
-                seller: listing.seller,
-                auctionHouseAddress: listing.auctionHouse,
-                tokenMint: listing.tokenMint,
-                tokenATA: listing.tokenAddress, 
-                price: listing.baseLamports.toString(), 
-                sellerExpiry: sellerExpiry.toString(), 
+                seller: currentListing.seller,
+                auctionHouseAddress: currentListing.auctionHouse,
+                tokenMint: currentListing.tokenMint,
+                tokenATA: currentListing.tokenAddress, 
+                // FIX: Send price in SOL (0.05), NOT Lamports (50000000)
+                price: currentListing.price.toString(), 
+                sellerExpiry: (currentListing.expiry || "0").toString(), 
             });
+
+            toast.update(toastId, { render: "Building Transaction..." });
+            
             const res = await fetch(`/api/me-proxy/buy-now?${query.toString()}`);
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || "API Construction Failed");
+            }
+
             const data = await res.json();
-            if (data.error) throw new Error(data.error);
-            if (!data.txSigned && !data.tx) throw new Error("No transaction returned.");
+            if (!data.txSigned && !data.tx) throw new Error("No transaction data returned.");
+
+            // D. DESERIALIZE & SIGN
             let txBuffer: Buffer;
             const txData = data.txSigned || data.tx; 
             if (typeof txData === 'string') txBuffer = Buffer.from(txData, 'base64');
             else if (txData?.data) txBuffer = Buffer.from(txData.data);
             else throw new Error("Invalid transaction format.");
+
             let transaction;
             try { transaction = VersionedTransaction.deserialize(txBuffer); } 
-            catch (err) { try { transaction = Transaction.from(txBuffer); } catch (legacyErr) { throw new Error("Failed to deserialize."); } }
-            const signature = await sendTransaction(transaction, connection);
-            toast.dismiss(toastId);
-            const confirmId = toast.info("Transaction Sent! Confirming...", { autoClose: false, closeOnClick: false });
+            catch (err) { transaction = Transaction.from(txBuffer); }
+
+            toast.update(toastId, { render: "Please Sign in Wallet..." });
+            
+            const signature = await sendTransaction(transaction, connection, {
+                skipPreflight: false, // Ensure simulation runs to catch errors early
+                maxRetries: 3
+            });
+            
+            // FIXED: Removed 'isLoading: true' to fix TS error
+            toast.update(toastId, { render: "Confirming Transaction..." });
+            
             await connection.confirmTransaction(signature, 'confirmed');
-            toast.dismiss(confirmId);
+            
+            toast.dismiss(toastId);
             toast.success("Purchase Successful!");
             setStatus("SOLD");
             setListing(null);
+
         } catch (err: any) {
-            console.error("Buy Failed:", err);
+            console.error("Buy Error:", err);
             toast.dismiss(toastId);
-            toast.error(`Buy Failed: ${err.message}`);
-        } finally { setIsBuying(false); }
-    }, [publicKey, listing, connection, isBuying]);
+            
+            // Nice error message
+            const msg = err.message || "";
+            if (msg.includes("0x1")) toast.error("Transaction Rejected");
+            else if (msg.includes("Insufficient")) toast.error(msg);
+            else {
+                toast.info("Opening Magic Eden fallback...", { autoClose: 2000 });
+                window.open(`https://magiceden.io/item-details/${mint}`, '_blank');
+            }
+        } finally { 
+            setIsBuying(false); 
+        }
+    }, [publicKey, listing, connection, isBuying, mint, status, sendTransaction]);
 
     return (
         <group position={[6, -2, 0]}>
             <Box args={[3.5, 2.2, 0.2]} castShadow><meshStandardMaterial color="#0a0a0a" metalness={0.8} roughness={0.2} /></Box>
             <Box args={[3.6, 2.3, 0.1]} position={[0, 0, -0.05]}><meshStandardMaterial color="#DAA520" metalness={1} roughness={0.1} /></Box>
+            
             <group position={[0, 0.3, 0.11]}>
                 <Suspense fallback={null}>
                     <Text position={[0, 0.3, 0]} fontSize={0.25} color="#DAA520" font="/ROMEO.TTF" anchorX="center" maxWidth={3}>{name ? name.toUpperCase() : "UNTITLED"}</Text>
@@ -133,10 +232,17 @@ function ArtPlaque({ mint, name, manualPrice }: { mint?: string, name?: string, 
                     {priceText && <Text position={[0, -0.4, 0]} fontSize={0.25} color="white" anchorX="center" font="/ROMEO.TTF">{priceText}</Text>}
                 </Suspense>
             </group>
-            {status === 'LISTED' && listing && (
+
+            {(status === 'LISTED' && listing) && (
                 <group position={[0, -0.6, 0.15]} onClick={handleBuy} onPointerOver={() => setHovered(true)} onPointerOut={() => setHovered(false)}>
-                    <Box args={[2.5, 0.5, 0.1]}><meshStandardMaterial color={isBuying ? "#555" : (hovered ? "#22c55e" : "#15803d")} emissive={hovered ? "#22c55e" : "#000"} emissiveIntensity={0.2} /></Box>
-                    <Suspense fallback={null}><Text position={[0, 0, 0.06]} fontSize={0.2} color="white" font="/ROMEO.TTF" anchorX="center" anchorY="middle">{isBuying ? "PROCESSING..." : (publicKey ? "PURCHASE PIECE" : "CONNECT WALLET")}</Text></Suspense>
+                    <Box args={[2.5, 0.5, 0.1]}>
+                        <meshStandardMaterial color={isBuying ? "#555" : (hovered ? "#22c55e" : "#15803d")} emissive={hovered ? "#22c55e" : "#000"} emissiveIntensity={0.2} />
+                    </Box>
+                    <Suspense fallback={null}>
+                        <Text position={[0, 0, 0.06]} fontSize={0.2} color="white" font="/ROMEO.TTF" anchorX="center" anchorY="middle">
+                            {isBuying ? "PROCESSING..." : (publicKey ? "PURCHASE PIECE" : "CONNECT WALLET")}
+                        </Text>
+                    </Suspense>
                 </group>
             )}
         </group>
@@ -149,6 +255,15 @@ function InteractiveFrame({ url, label, price, link, position, rotation, isSold,
     const frameColor = isPremium ? "#DAA520" : (hovered ? "#ffd700" : "#111");
     const frameMetalness = isPremium ? 1.0 : 0.8;
     const frameRoughness = isPremium ? 0.1 : 0.2;
+
+    // --- OPTIMIZATION: Check for Mobile ---
+    const [isMobile, setIsMobile] = useState(false);
+    useEffect(() => {
+        const checkMobile = () => setIsMobile(window.innerWidth < 768);
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
 
     return (
         <group position={position} rotation={rotation}
